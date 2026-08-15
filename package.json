@@ -1,0 +1,30 @@
+{
+  "name": "morse-tap",
+  "version": "0.0.2",
+  "main": "index.ts",
+  "dependencies": {
+    "expo": "~57.0.13",
+    "expo-audio": "^57.0.3",
+    "expo-haptics": "^57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "^5.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "~19.2.2",
+    "tsx": "^4.23.12",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "test": "tsx --test src/morse.test.ts",
+    "typecheck": "tsc --noEmit",
+    "test:server": "cd server && npm test"
+  },
+  "private": true
+}
