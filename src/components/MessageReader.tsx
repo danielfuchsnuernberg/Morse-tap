@@ -60,6 +60,8 @@ export default function MessageReader(props: Props) {
             <Text style={[styles.tag, styles.tagGood]}>Delivered</Text>
           ) : props.delivery === 'sending' ? (
             <Text style={styles.tag}>Sending…</Text>
+          ) : props.delivery === 'sent' ? (
+            <Text style={styles.tag}>Sent</Text>
           ) : props.delivery === 'nobody' ? (
             <Text style={[styles.tag, styles.tagWarn]}>Nobody there</Text>
           ) : (

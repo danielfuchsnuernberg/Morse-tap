@@ -149,7 +149,6 @@ function send() {
   state.lastRelease = null;
   persist();
   if (accepted) awaitAck(id);
-  playMessage(id, symbols);
   render();
 }
 
@@ -228,9 +227,21 @@ function keyUp() {
   if (state.decodingId) {
     const message = state.messages.find((m) => m.id === state.decodingId);
     if (message) {
+      const before = message.echo.index;
       message.echo = echoTap(message.symbols, message.echo, symbolForPress(duration, timing()));
-      if (echoComplete(message.symbols, message.echo)) state.decodingId = null;
+      const done = echoComplete(message.symbols, message.echo);
+      if (done) state.decodingId = null;
       persist();
+      render();
+      // Finished a letter? Sound the next one automatically.
+      if (!done && message.echo.index > before) {
+        const code = echoTargetCode(message.symbols, message.echo);
+        if (code) {
+          message.echo = echoHear(message.echo);
+          playMessage(message.id + ':echo', code);
+        }
+      }
+      return;
     }
     render();
     return;
@@ -340,7 +351,8 @@ function messageHtml(message) {
     .map((token, index) => {
       const tileState = tiles[index];
       const current = tileState === 'listening' || tileState === 'tapping';
-      const code = tileState === 'revealed' || tileState === 'tapping' ? token.code : '···';
+      // Always show the dots and dashes. The letter is what you earn.
+      const code = token.code;
       const char = tileState === 'revealed' ? answer[index] : '_';
       return `<div class="tile${tileState === 'revealed' ? ' revealed' : ''}${
         current && active ? ' current' : ''
@@ -359,9 +371,7 @@ function messageHtml(message) {
   const controls = done
     ? `<button class="pill" data-play="${message.id}">${playing ? '■ Stop' : '▶ Replay'}</button>`
     : active
-      ? `<button class="pill${echo.heard ? '' : ' cue'}" data-listen="${message.id}">${
-          echo.heard ? 'Hear it again' : '♪ Listen'
-        }</button>`
+      ? `<button class="pill" data-listen="${message.id}">♪ Hear it again</button>`
       : `<button class="pill" data-decode="${message.id}">Decode this</button>`;
 
   const instruction = done
@@ -370,9 +380,7 @@ function messageHtml(message) {
       ? `<div class="instruction${echo.missed ? ' bad' : ''}">${
           echo.missed
             ? 'Not that one — listen again and retry'
-            : echo.heard
-              ? `Tap it back: <b>${esc(echo.tapped || '·')}</b>`
-              : 'Press Listen to hear the next letter'
+            : `Tap it back: <b>${esc(echo.tapped || '·')}</b>`
         }</div>
          <div class="row">
            <button class="helper" data-skip="${message.id}">Skip this letter</button>
@@ -510,7 +518,7 @@ function settingsHtml() {
       }</button>
     </div>
 
-    <div class="version">Morse Tap · web · v018</div>`;
+    <div class="version">Morse Tap · web · v019</div>`;
 }
 
 function render() {
@@ -596,6 +604,13 @@ document.addEventListener('click', (event) => {
 
   if (d.decode) {
     state.decodingId = d.decode;
+    const message = state.messages.find((m) => m.id === d.decode);
+    const code = echoTargetCode(message.symbols, message.echo);
+    if (code) {
+      message.echo = echoHear(message.echo);
+      playMessage(message.id + ':echo', code);
+      persist();
+    }
     return render();
   }
   if (d.listen) {

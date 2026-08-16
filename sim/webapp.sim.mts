@@ -211,6 +211,16 @@ pressWithDrift(30);
 const draft2 = ($('draft') as any).textContent as string;
 check(draft2.includes('-..') || draft2.includes('D'), `a dash then two dots should give D, got "${draft2.trim()}"`);
 
-console.log('re-checked the four bugs seen on the phone');
+/* ---- v019 behaviour ---- */
+check(!/playMessage\(id, symbols\);\n  render\(\);/.test(js),
+  'sending must not replay the message back at you');
+check(js.includes('const code = token.code;'),
+  'the dots and dashes must be visible from the start');
+check(js.includes("playMessage(message.id + ':echo', code)"),
+  'the current letter must sound automatically');
+const decodeBlock = js.slice(js.indexOf('if (d.decode)'), js.indexOf('if (d.decode)') + 400);
+check(decodeBlock.includes('echoHear'), 'starting a decode must sound the first letter');
+
+console.log('re-checked the four bugs seen on the phone, plus the v019 changes');
 console.log(problems.length === 0 ? 'PASS: layout, Send, key capture and ack fallback all correct' : `STILL BROKEN:\n${problems.slice(0,6).join('\n')}`);
 process.exit(problems.length ? 1 : 0);

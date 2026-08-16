@@ -2,7 +2,7 @@
  * Caches the app shell so it opens instantly and works with no signal.
  * Messages still need a connection, but the app itself always loads.
  */
-const CACHE = 'morse-tap-v017';
+const CACHE = 'morse-tap-v019';
 const SHELL = [
   './',
   './index.html',

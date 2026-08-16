@@ -96,7 +96,9 @@ export function parseMessages(raw: string | null): Message[] {
         // and one left mid-flight can't be confirmed after a restart.
         delivery: !item.mine
           ? ('none' as const)
-          : item.delivery === 'delivered' || item.delivery === 'nobody'
+          : item.delivery === 'delivered' ||
+              item.delivery === 'nobody' ||
+              item.delivery === 'sent'
             ? item.delivery
             : ('queued' as const),
       }))

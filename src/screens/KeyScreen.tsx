@@ -50,7 +50,14 @@ export type Message = {
  * 'delivered' - the server confirmed someone received it
  * 'nobody'  - it reached the server, but the room was empty
  */
-export type Delivery = 'queued' | 'sending' | 'delivered' | 'nobody' | 'none';
+export type Delivery =
+  | 'queued'
+  | 'sending'
+  /** Handed over, but the server never confirmed - an older relay. */
+  | 'sent'
+  | 'delivered'
+  | 'nobody'
+  | 'none';
 
 export const newMessage = (
   id: string,

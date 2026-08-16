@@ -148,8 +148,15 @@ export default function App() {
         ...current,
         { ...newMessage(id, true, symbols, Date.now()), delivery: accepted ? 'sending' : 'queued' },
       ]);
-      // Hear back what you just sent, highlighted letter by letter.
-      play(id, symbols, timing);
+      // An older server sends no confirmation, so settle to a plain
+      // "Sent" rather than showing "Sending…" for ever.
+      if (accepted) {
+        setTimeout(() => {
+          setMessages((current) =>
+            current.map((m) => (m.id === id && m.delivery === 'sending' ? { ...m, delivery: 'sent' } : m))
+          );
+        }, 6000);
+      }
     },
     [sendMorse, play, timing]
   );
@@ -250,15 +257,43 @@ export default function App() {
   const handleDecodeSymbol = useCallback(
     (symbol: Symbol) => {
       if (!decodingId) return;
+      let advancedTo: { id: string; code: string } | null = null;
+
       setMessages((current) =>
         current.map((message) => {
           if (message.id !== decodingId) return message;
           const next = echoTap(message.symbols, message.echo, symbol);
+          // Finished that letter? Line up the next one and sound it.
+          if (next.index > message.echo.index && !echoComplete(message.symbols, next)) {
+            const code = echoTargetCode(message.symbols, next);
+            if (code) advancedTo = { id: message.id, code };
+            return { ...message, echo: echoHear(next) };
+          }
           return { ...message, echo: next };
         })
       );
+
+      if (advancedTo) {
+        const { id, code } = advancedTo;
+        play(`${id}:echo`, code, timing);
+      }
     },
-    [decodingId]
+    [decodingId, play, timing]
+  );
+
+  /** Starting a decode plays the first letter straight away. */
+  const startDecode = useCallback(
+    (id: string) => {
+      setDecodingId(id);
+      const message = messages.find((item) => item.id === id);
+      if (!message) return;
+      const code = echoTargetCode(message.symbols, message.echo);
+      if (code) {
+        patchEcho(id, echoHear);
+        play(`${id}:echo`, code, timing);
+      }
+    },
+    [messages, patchEcho, play, timing]
   );
 
   // Hand the key back automatically once a message is fully decoded.
@@ -333,7 +368,7 @@ export default function App() {
           onOpenUp={handleOpenUp}
           echoMode={usesEchoDecoding(prefs)}
           decodingId={decodingId}
-          onStartDecode={setDecodingId}
+          onStartDecode={startDecode}
           onStopDecode={() => setDecodingId(null)}
           onDecodeSymbol={handleDecodeSymbol}
           onEchoListen={handleEchoListen}

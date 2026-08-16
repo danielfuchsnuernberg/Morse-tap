@@ -20,6 +20,8 @@ for (const phrase of phrases) {
   const codes = splitLetters(morse).map((token) => token.code);
 
   /* ---- the leak check, run after every single interaction ---- */
+  // The dots and dashes are visible from the start now; the LETTER is
+  // what must never appear before it has been heard and tapped back.
   const assertNoLeak = (state: EchoState, where: string) => {
     const tiles = echoTiles(morse, state);
     tiles.forEach((tile, index) => {
@@ -42,11 +44,11 @@ for (const phrase of phrases) {
     const before = echoTap(morse, state, code[0] as Symbol);
     check(before === state, `${phrase}: tapping was allowed before listening`);
     check(echoTiles(morse, state)[letterIndex] === 'listening',
-      `${phrase}: pattern visible before listening at ${letterIndex}`);
+      `${phrase}: the current letter should be awaiting a listen at ${letterIndex}`);
 
     state = echoHear(state);
     check(echoTiles(morse, state)[letterIndex] === 'tapping',
-      `${phrase}: pattern not shown after listening at ${letterIndex}`);
+      `${phrase}: should be ready to tap after listening at ${letterIndex}`);
     check(echoTiles(morse, state)[letterIndex] !== 'revealed',
       `${phrase}: letter shown merely for listening at ${letterIndex}`);
     assertNoLeak(state, `heard ${letterIndex}`);

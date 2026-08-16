@@ -50,9 +50,7 @@ export default function EchoReader(props: Props) {
         ) : props.active ? (
           <TouchableOpacity style={[styles.pill, !heard && styles.pillCue]} onPress={props.onListen}>
             <Text style={[styles.pillIcon, !heard && styles.ink]}>♪</Text>
-            <Text style={[styles.pillLabel, !heard && styles.ink]}>
-              {heard ? 'Hear it again' : 'Listen'}
-            </Text>
+            <Text style={[styles.pillLabel, !heard && styles.ink]}>Hear it again</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.pill} onPress={props.onStart}>
@@ -89,8 +87,10 @@ export default function EchoReader(props: Props) {
                 current && missed && styles.tileMissed,
               ]}
             >
+              {/* The dots and dashes are always shown. The letter is not:
+                  that only appears once you've tapped the pattern back. */}
               <Text style={[styles.tileCode, state === 'revealed' && styles.tileCodeRevealed]}>
-                {state === 'revealed' ? token.code : state === 'tapping' ? token.code : '· · ·'}
+                {token.code}
               </Text>
               <Text style={[styles.tileChar, state === 'revealed' && styles.tileCharRevealed]}>
                 {state === 'revealed' ? answer[tileIndex] : '_'}
@@ -118,9 +118,7 @@ export default function EchoReader(props: Props) {
           <Text style={[styles.instruction, missed && styles.instructionBad]}>
             {missed
               ? 'Not that one — listen again and retry'
-              : heard
-                ? 'Now tap that pattern on the key below'
-                : 'Press Listen to hear the next letter'}
+              : 'Tap that pattern on the key below'}
           </Text>
 
           <View style={styles.helperRow}>
