@@ -167,8 +167,15 @@ So both versions now check. After 20 seconds of quiet the app pings the server; 
 within 8 seconds the link is treated as dead and rebuilt. Returning to the app re-checks
 immediately, since that's the most likely moment to find a stale connection.
 
-And if a sent message gets no confirmation within 8 seconds, it goes **back in the queue** and the
-connection is rebuilt — rather than being quietly relabelled "Sent" and lost.
+If a sent message gets no confirmation within 8 seconds it settles to **Sent** — handed over, but
+unconfirmed. It is **never resent**. The socket accepted it, so it went out; resending would only
+duplicate it on the other phone. Only messages the socket *refused* are queued, and those are
+flushed when the connection returns.
+
+That distinction matters more than it sounds. Treating "no confirmation" as "lost" made the app
+resend every 8 seconds against a server that never confirms anything — four copies in thirty
+seconds. `sim/nodupes.sim.mts` drives the real relay against a deliberately silent server and counts
+what a peer would receive.
 
 Rebuilding a link is fiddlier than it looks. Each attempt is numbered, and only the newest socket is
 allowed to reconnect when it closes. Without that, retiring a dead socket leaves it opening a second

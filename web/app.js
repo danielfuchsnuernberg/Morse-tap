@@ -105,6 +105,7 @@ function flushQueued() {
     if (message.mine && message.delivery === 'queued') {
       if (relay.send(message.id, message.symbols)) {
         message.delivery = 'sending';
+        awaitAck(message.id);
         changed = true;
       }
     }
@@ -160,14 +161,17 @@ function send() {
  * The server confirms delivery, but an older one won't. Rather than
  * showing "Sending…" for ever, settle to a plain "Sent" after a while.
  */
+/**
+ * No confirmation back means the server is an older one that doesn't
+ * send them. It does NOT mean the message was lost: the socket took it,
+ * so it went out. Resending here would duplicate it on the other phone,
+ * so we only stop claiming to be certain.
+ */
 function awaitAck(id) {
   setTimeout(() => {
     const message = state.messages.find((m) => m.id === id);
     if (message && message.delivery === 'sending') {
-      // No confirmation means either an older server or a link that
-      // quietly died. Assume the worse: queue it and rebuild the link.
-      message.delivery = 'queued';
-      relay.reconnect();
+      message.delivery = 'sent';
       persist();
       render();
     }
@@ -534,7 +538,7 @@ function settingsHtml() {
       }</button>
     </div>
 
-    <div class="version">Morse Tap · web · v024</div>`;
+    <div class="version">Morse Tap · web · v025</div>`;
 }
 
 function render() {

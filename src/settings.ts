@@ -20,6 +20,13 @@ export type Prefs = {
   effectiveWpm: number;
   soundOn: boolean;
   hapticsOn: boolean;
+  /**
+   * Stop the screen dimming while the app is open.
+   *
+   * Expo Go forces this on during development, which is why the screen
+   * never sleeps while testing. In a real build it's off unless you ask.
+   */
+  keepAwake: boolean;
   serverUrl: string;
 };
 
@@ -31,6 +38,7 @@ export const DEFAULT_PREFS: Prefs = {
   effectiveWpm: 9,
   soundOn: true,
   hapticsOn: true,
+  keepAwake: false,
   serverUrl: 'wss://morse-tap-server.onrender.com',
 };
 

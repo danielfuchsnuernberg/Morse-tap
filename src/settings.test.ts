@@ -154,3 +154,17 @@ test('a slower speed always means a longer dot and longer gaps', () => {
     assert.ok(slower.letterGapMs > faster.letterGapMs, `${BEGINNER_SPEEDS[i]} gap`);
   }
 });
+
+test('the screen is allowed to sleep by default', () => {
+  assert.equal(DEFAULT_PREFS.keepAwake, false);
+});
+
+test('keeping the screen awake is independent of everything else', () => {
+  for (const mode of ['beginner', 'farnsworth'] as const) {
+    for (const keepAwake of [true, false]) {
+      const p = prefs({ mode, keepAwake });
+      assert.equal(p.keepAwake, keepAwake);
+      assert.ok(timingFor(p).charUnitMs > 0);
+    }
+  }
+});

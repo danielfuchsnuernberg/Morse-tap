@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { theme } from './src/theme';
 import {
   nextHintIndex,
@@ -100,6 +101,29 @@ export default function App() {
     if (restored) saveMessages(messages);
   }, [messages, restored]);
 
+  // Expo Go turns this on for you during development, which is why the
+  // screen never sleeps while testing. Take control of it explicitly so
+  // the setting means the same thing in a real build.
+  useEffect(() => {
+    const tag = 'morse-tap';
+    if (prefs.keepAwake) {
+      activateKeepAwakeAsync(tag).catch(() => undefined);
+    } else {
+      try {
+        deactivateKeepAwake(tag);
+      } catch {
+        /* nothing was holding it */
+      }
+    }
+    return () => {
+      try {
+        deactivateKeepAwake(tag);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [prefs.keepAwake]);
+
   const timing = timingFor(prefs);
   const { toneOn, toneOff, play, stop, playback } = useTone(prefs.soundOn, prefs.hapticsOn);
 
@@ -132,7 +156,7 @@ export default function App() {
     [setDelivery]
   );
 
-  const { status, peers, lastError, sendMorse, reconnect } = useRelay({
+  const { status, peers, lastError, sendMorse } = useRelay({
     url: prefs.serverUrl,
     room,
     enabled: connected,
@@ -150,31 +174,43 @@ export default function App() {
         ...current,
         { ...newMessage(id, true, symbols, Date.now()), delivery: accepted ? 'sending' : 'queued' },
       ]);
-      // No confirmation back means one of two things: an older server,
-      // or a connection that quietly died. Assume the worse of the two,
-      // put the message back in the queue and rebuild the link.
+      // No confirmation back means the server is an older one that
+      // doesn't send them. It does NOT mean the message was lost: the
+      // socket took it, so it went out. Resending here would duplicate
+      // it on the other phone, so we only stop claiming to be certain.
+      //
+      // Genuinely undelivered messages are the ones the socket refused,
+      // and those are queued at send time and flushed on reconnect.
       if (accepted) {
         setTimeout(() => {
-          setMessages((current) => {
-            const stuck = current.find((m) => m.id === id && m.delivery === 'sending');
-            if (!stuck) return current;
-            reconnect();
-            return current.map((m) => (m.id === id ? { ...m, delivery: 'queued' } : m));
-          });
+          setMessages((current) =>
+            current.map((m) =>
+              m.id === id && m.delivery === 'sending' ? { ...m, delivery: 'sent' } : m
+            )
+          );
         }, 8000);
       }
     },
-    [sendMorse, play, timing, reconnect]
+    [sendMorse, play, timing]
   );
 
-  /** Send again anything that never made it out. */
+  /**
+   * Send anything that never made it out. Only messages the socket
+   * refused are ever in this state, so this cannot duplicate a message
+   * that was already handed over.
+   */
   const flushQueued = useCallback(() => {
     setMessages((current) =>
       current.map((message) => {
         if (!message.mine || message.delivery !== 'queued') return message;
-        return sendMorse(message.id, message.symbols)
-          ? { ...message, delivery: 'sending' }
-          : message;
+        if (!sendMorse(message.id, message.symbols)) return message;
+        const id = message.id;
+        setTimeout(() => {
+          setMessages((later) =>
+            later.map((m) => (m.id === id && m.delivery === 'sending' ? { ...m, delivery: 'sent' } : m))
+          );
+        }, 8000);
+        return { ...message, delivery: 'sending' };
       })
     );
   }, [sendMorse]);

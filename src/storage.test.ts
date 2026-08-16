@@ -216,3 +216,13 @@ test('an out-of-range cursor is parked rather than pointing at nothing', () => {
   assert.equal(sanitizeEcho({ current: 99 }, 3).current, -1);
   assert.equal(sanitizeEcho({ current: 1 }, 3).current, 1);
 });
+
+test('the keep-awake setting survives a restart', () => {
+  assert.equal(parsePrefs(JSON.stringify({ keepAwake: true })).keepAwake, true);
+  assert.equal(parsePrefs(JSON.stringify({ keepAwake: false })).keepAwake, false);
+});
+
+test('an older save without the keep-awake setting defaults to off', () => {
+  assert.equal(parsePrefs(JSON.stringify({ mode: 'beginner' })).keepAwake, false);
+  assert.equal(parsePrefs(JSON.stringify({ keepAwake: 'yes please' })).keepAwake, false);
+});

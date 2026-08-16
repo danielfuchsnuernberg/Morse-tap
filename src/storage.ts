@@ -40,6 +40,7 @@ export function parsePrefs(raw: string | null): Prefs {
       decodeStyle: stored.decodeStyle === 'type' ? 'type' : 'echo',
       soundOn: stored.soundOn !== false,
       hapticsOn: stored.hapticsOn !== false,
+      keepAwake: stored.keepAwake === true,
       serverUrl:
         typeof stored.serverUrl === 'string' && stored.serverUrl.length > 0
           ? stored.serverUrl
