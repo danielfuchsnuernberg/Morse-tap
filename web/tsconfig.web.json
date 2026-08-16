@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "es2020",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "outDir": "lib",
+    "declaration": false
+  },
+  "files": ["../src/morse.ts"]
+}

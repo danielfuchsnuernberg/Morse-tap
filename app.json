@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Morse Tap",
+    "slug": "morse-tap",
+    "version": "0.0.18",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.danielfuchs.morsetap",
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.danielfuchs.morsetap"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

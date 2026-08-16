@@ -1,0 +1,13 @@
+{
+  "name": "morse-tap-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WebSocket relay for the Morse Tap iPhone app",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": { "ws": "^8.18.0" }
+}
