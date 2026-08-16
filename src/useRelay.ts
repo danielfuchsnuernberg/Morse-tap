@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+
+/** Ask the server if it's still there after this much quiet. */
+const PING_AFTER_MS = 20000;
+/** If it doesn't answer within this, the link is dead. */
+const PONG_TIMEOUT_MS = 8000;
 
 export type Status = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -28,6 +34,10 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
   const [lastError, setLastError] = useState<string | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
+  /** When we last heard anything at all from the server. */
+  const lastHeardRef = useRef(0);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reopenRef = useRef<() => void>(() => undefined);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptsRef = useRef(0);
   const onMorseRef = useRef(onMorse);
@@ -80,6 +90,7 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
       };
 
       socket.onmessage = (event) => {
+        lastHeardRef.current = Date.now();
         let message: any;
         try {
           message = JSON.parse(String(event.data));
@@ -120,9 +131,68 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
       };
     };
 
+    reopenRef.current = () => {
+      // Drop whatever we have and start again from scratch.
+      clearRetry();
+      attemptsRef.current = 0;
+      const current = socketRef.current;
+      socketRef.current = null;
+      if (current) {
+        try {
+          current.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      open();
+    };
+
     open();
 
+    /**
+     * A WebSocket that dies quietly - a sleeping phone, a server going
+     * idle - never tells you. So we ask, and if nothing answers we treat
+     * the link as gone rather than showing a green light over nothing.
+     */
+    heartbeatRef.current = setInterval(() => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== 1) return;
+
+      const quietFor = Date.now() - lastHeardRef.current;
+      if (quietFor > PING_AFTER_MS + PONG_TIMEOUT_MS) {
+        setStatus('error');
+        setPeers(0);
+        try {
+          socket.close();
+        } catch {
+          /* the onclose handler will reconnect */
+        }
+        return;
+      }
+      if (quietFor > PING_AFTER_MS) {
+        try {
+          socket.send(JSON.stringify({ type: 'ping' }));
+        } catch {
+          /* ignore - the timeout above will catch it */
+        }
+      }
+    }, 5000);
+
+    // Coming back to the app is the most likely moment for a stale link.
+    const appStateSub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== 1) {
+        reopenRef.current();
+        return;
+      }
+      lastHeardRef.current = Date.now() - PING_AFTER_MS - 1;
+    });
+
     return () => {
+      appStateSub.remove();
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
       closingRef.current = true;
       clearRetry();
       attemptsRef.current = 0;
@@ -130,6 +200,9 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
       socketRef.current = null;
     };
   }, [url, room, enabled]);
+
+  /** Force a fresh connection, used when a send goes unanswered. */
+  const reconnect = useCallback(() => reopenRef.current(), []);
 
   /**
    * Try to send. Returns false when the socket isn't open, so the caller
@@ -146,5 +219,5 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
     }
   }, []);
 
-  return { status, peers, lastError, sendMorse };
+  return { status, peers, lastError, sendMorse, reconnect };
 }

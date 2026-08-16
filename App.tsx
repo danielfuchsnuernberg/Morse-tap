@@ -132,7 +132,7 @@ export default function App() {
     [setDelivery]
   );
 
-  const { status, peers, lastError, sendMorse } = useRelay({
+  const { status, peers, lastError, sendMorse, reconnect } = useRelay({
     url: prefs.serverUrl,
     room,
     enabled: connected,
@@ -150,17 +150,21 @@ export default function App() {
         ...current,
         { ...newMessage(id, true, symbols, Date.now()), delivery: accepted ? 'sending' : 'queued' },
       ]);
-      // An older server sends no confirmation, so settle to a plain
-      // "Sent" rather than showing "Sending…" for ever.
+      // No confirmation back means one of two things: an older server,
+      // or a connection that quietly died. Assume the worse of the two,
+      // put the message back in the queue and rebuild the link.
       if (accepted) {
         setTimeout(() => {
-          setMessages((current) =>
-            current.map((m) => (m.id === id && m.delivery === 'sending' ? { ...m, delivery: 'sent' } : m))
-          );
-        }, 6000);
+          setMessages((current) => {
+            const stuck = current.find((m) => m.id === id && m.delivery === 'sending');
+            if (!stuck) return current;
+            reconnect();
+            return current.map((m) => (m.id === id ? { ...m, delivery: 'queued' } : m));
+          });
+        }, 8000);
       }
     },
-    [sendMorse, play, timing]
+    [sendMorse, play, timing, reconnect]
   );
 
   /** Send again anything that never made it out. */

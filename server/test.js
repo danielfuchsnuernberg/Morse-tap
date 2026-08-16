@@ -231,3 +231,18 @@ test('every message gets exactly one ack', async () => {
   alice.close();
   bob.close();
 });
+
+test('the server answers a ping so clients can prove the link is alive', async () => {
+  const alice = await connect();
+  alice.send(JSON.stringify({ type: 'ping' }));
+  const pong = await waitFor(alice, (m) => m.type === 'pong', 'pong');
+  assert.equal(typeof pong.at, 'number');
+  alice.close();
+});
+
+test('ping works before joining a room', async () => {
+  const alice = await connect();
+  alice.send(JSON.stringify({ type: 'ping' }));
+  await waitFor(alice, (m) => m.type === 'pong', 'pong without a room');
+  alice.close();
+});

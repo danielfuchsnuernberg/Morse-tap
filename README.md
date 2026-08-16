@@ -158,6 +158,18 @@ Anything that couldn't go out is held and sent automatically the moment the conn
 including after a restart. Nothing is silently dropped, and nothing claims to have been sent when
 it wasn't.
 
+## Staying connected
+
+A WebSocket that dies quietly never tells you. A sleeping phone, a server going idle, a network
+blip — the socket just goes silent while the app carries on showing a green light over nothing.
+
+So both versions now check. After 20 seconds of quiet the app pings the server; if nothing answers
+within 8 seconds the link is treated as dead and rebuilt. Returning to the app re-checks
+immediately, since that's the most likely moment to find a stale connection.
+
+And if a sent message gets no confirmation within 8 seconds, it goes **back in the queue** and the
+connection is rebuilt — rather than being quietly relabelled "Sent" and lost.
+
 ## How two people connect
 
 The connection status lives as a small dot beside the title. Tap it to open the room controls; tap

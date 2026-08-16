@@ -190,7 +190,10 @@ check(js.includes('visibilitychange'), 'a press must not stay open if the app is
 
 // 4. An old server sends no ack, so "Sending…" must not hang for ever.
 check(js.includes('awaitAck'), 'there must be a fallback when no ack arrives');
-check(js.includes("delivery = 'sent'"), 'an unconfirmed message should settle to Sent');
+// v022 replaced this: an unconfirmed message is no longer quietly
+// relabelled "Sent" - it goes back in the queue and the link is rebuilt.
+check(js.includes("message.delivery = 'queued'"),
+  'an unconfirmed message must be re-queued rather than called sent');
 
 /* ---- and prove a press still produces the right letter ---- */
 const key2 = doc.getElementById('key')!;
@@ -232,6 +235,18 @@ check(pickBlock.includes('echoHear'), 'picking a tile must sound it');
 check(js.includes('shown || done') && js.includes('disabled'),
   'already-earned tiles must not be re-pickable');
 
-console.log('re-checked the four bugs seen on the phone, plus the v019 changes');
-console.log(problems.length === 0 ? 'PASS: layout, Send, key capture and ack fallback all correct' : `STILL BROKEN:\n${problems.slice(0,6).join('\n')}`);
+
+
+/* ---- v022: a dead connection must be noticed, not shown as green ---- */
+const relayJs = readFileSync('web/relay.js', 'utf8');
+check(relayJs.includes("type: 'ping'"), 'the client must check the link is alive');
+check(relayJs.includes('PONG_TIMEOUT_MS'), 'an unanswered ping must time out');
+check(relayJs.includes('visibilitychange'), 'returning to the app must re-check the link');
+check(relayJs.includes('reconnect: reopen'), 'callers must be able to force a reconnect');
+check(js.includes('relay.reconnect()'), 'an unanswered send must rebuild the link');
+check(js.includes("message.delivery = 'queued'"), 'an unanswered send must be re-queued, not called sent');
+
+console.log(problems.length === 0
+  ? 'PASS: the app notices when the connection has quietly died'
+  : `FAIL:\n${problems.slice(0, 5).join('\n')}`);
 process.exit(problems.length ? 1 : 0);

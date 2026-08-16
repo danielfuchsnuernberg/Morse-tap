@@ -117,6 +117,12 @@ wss.on('connection', (socket) => {
       return;
     }
 
+    // A client asking whether we're still here.
+    if (message.type === 'ping') {
+      send(socket, { type: 'pong', at: Date.now() });
+      return;
+    }
+
     if (message.type === 'leave') {
       leaveRoom(socket);
       return;

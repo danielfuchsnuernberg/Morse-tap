@@ -164,11 +164,14 @@ function awaitAck(id) {
   setTimeout(() => {
     const message = state.messages.find((m) => m.id === id);
     if (message && message.delivery === 'sending') {
-      message.delivery = 'sent';
+      // No confirmation means either an older server or a link that
+      // quietly died. Assume the worse: queue it and rebuild the link.
+      message.delivery = 'queued';
+      relay.reconnect();
       persist();
       render();
     }
-  }, 6000);
+  }, 8000);
 }
 
 function playMessage(id, symbols, slow = false) {
@@ -531,7 +534,7 @@ function settingsHtml() {
       }</button>
     </div>
 
-    <div class="version">Morse Tap · web · v021</div>`;
+    <div class="version">Morse Tap · web · v022</div>`;
 }
 
 function render() {

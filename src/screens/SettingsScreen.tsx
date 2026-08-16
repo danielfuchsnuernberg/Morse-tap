@@ -276,7 +276,7 @@ export default function SettingsScreen({ prefs, onChange, messageCount, onClearH
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.version}>Morse Tap v021</Text>
+      <Text style={styles.version}>Morse Tap v022</Text>
     </ScrollView>
   );
 }
