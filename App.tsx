@@ -9,8 +9,6 @@ import {
   echoHear,
   echoTap,
   echoSelect,
-  echoGiveLetter,
-  echoOpenUp,
   echoTargetCode,
   echoComplete,
   nextUnsolved,
@@ -432,12 +430,6 @@ export default function App() {
           onDecodeSymbol={handleDecodeSymbol}
           onEchoListen={handleEchoListen}
           onEchoSelect={handleEchoSelect}
-          onEchoGiveLetter={(id) =>
-            setMessages((current) =>
-              current.map((m) => (m.id === id ? { ...m, echo: echoGiveLetter(m.symbols, m.echo) } : m))
-            )
-          }
-          onEchoOpenUp={(id) => patchEcho(id, echoOpenUp)}
           onRetry={(id) => {
             setDelivery(id, 'queued');
             flushQueued();

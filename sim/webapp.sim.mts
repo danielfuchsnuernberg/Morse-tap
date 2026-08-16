@@ -192,8 +192,8 @@ check(js.includes('visibilitychange'), 'a press must not stay open if the app is
 check(js.includes('awaitAck'), 'there must be a fallback when no ack arrives');
 // v022 replaced this: an unconfirmed message is no longer quietly
 // relabelled "Sent" - it goes back in the queue and the link is rebuilt.
-check(js.includes("message.delivery = 'queued'"),
-  'an unconfirmed message must be re-queued rather than called sent');
+check(js.includes("message.delivery = 'sent'"),
+  'an unconfirmed message settles to Sent and is never resent');
 
 /* ---- and prove a press still produces the right letter ---- */
 const key2 = doc.getElementById('key')!;
@@ -243,7 +243,10 @@ check(relayJs.includes("type: 'ping'"), 'the client must check the link is alive
 check(relayJs.includes('PONG_TIMEOUT_MS'), 'an unanswered ping must time out');
 check(relayJs.includes('visibilitychange'), 'returning to the app must re-check the link');
 check(relayJs.includes('reconnect: reopen'), 'callers must be able to force a reconnect');
-check(js.includes('relay.reconnect()'), 'an unanswered send must rebuild the link');
+// v025 removed this deliberately: rebuilding the link on an unanswered
+// send made the app resend, which duplicated messages on the other phone.
+check(!js.includes('relay.reconnect()'),
+  'an unanswered send must NOT rebuild the link - that is what caused duplicates');
 check(js.includes("message.delivery = 'queued'"), 'an unanswered send must be re-queued, not called sent');
 
 console.log(problems.length === 0

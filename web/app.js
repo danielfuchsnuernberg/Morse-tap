@@ -25,8 +25,6 @@ import {
   echoComplete,
   echoClean,
   echoTargetCode,
-  echoGiveLetter,
-  echoOpenUp,
   echoProgress,
   echoIsDone,
   nextUnsolved,
@@ -377,9 +375,7 @@ function messageHtml(message) {
     .join('');
 
   const tag = done
-    ? `<span class="tag ${clean ? 'good' : ''}">${
-        clean ? 'Decoded · perfect' : `Decoded · ${echo.misses} missed, ${echo.given.length} given`
-      }</span>`
+    ? `<span class="tag ${clean ? 'good' : ''}">${clean ? 'Perfect' : `${echo.misses} missed`}</span>`
     : `<span class="tag">${echoProgress(message.symbols, echo)}/${tokens.length}</span>`;
 
   const controls = done
@@ -395,18 +391,12 @@ function messageHtml(message) {
     : active
       ? `<div class="instruction${echo.missed ? ' bad' : ''}">${
           echo.missed
-            ? 'Not that one — listen again and retry'
+            ? 'Not that one'
             : echo.current < 0
-              ? 'Tap any letter above to work on it'
+              ? 'Pick a letter above'
               : `Tap it back: <b>${esc(echo.tapped || '·')}</b>`
-        }</div>
-         <div class="row">
-           <button class="helper" data-skip="${message.id}" ${
-             echo.current < 0 ? 'disabled' : ''
-           }>Give me this one</button>
-           <button class="helper dim" data-showall="${message.id}">Show all</button>
-         </div>`
-      : '<div class="instruction dim">A message arrived. Decode it by ear.</div>';
+        }</div>`
+      : '';
 
   return `<div class="msg theirs${active ? ' active' : ''}">
     <div class="msgtop">${controls}${tag}</div>
@@ -538,7 +528,7 @@ function settingsHtml() {
       }</button>
     </div>
 
-    <div class="version">Morse Tap · web · v025</div>`;
+    <div class="version">Morse Tap · web · v027</div>`;
 }
 
 function render() {
@@ -614,7 +604,7 @@ function step(key, direction) {
 }
 
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-play],[data-listen],[data-decode],[data-pick],[data-skip],[data-showall],[data-retry],[data-code],[data-mode],[data-step],[data-sound],[data-clear]');
+  const target = event.target.closest('[data-play],[data-listen],[data-decode],[data-pick],[data-retry],[data-code],[data-mode],[data-step],[data-sound],[data-clear]');
   if (!target) return;
   tone.unlock();
   const d = target.dataset;
@@ -662,20 +652,6 @@ document.addEventListener('click', (event) => {
       playMessage(message.id + ':echo', code);
       persist();
     }
-    return render();
-  }
-  if (d.skip) {
-    const message = state.messages.find((m) => m.id === d.skip);
-    message.echo = echoGiveLetter(message.symbols, message.echo);
-    if (echoComplete(message.symbols, message.echo)) state.decodingId = null;
-    persist();
-    return render();
-  }
-  if (d.showall) {
-    const message = state.messages.find((m) => m.id === d.showall);
-    message.echo = echoOpenUp(message.echo);
-    state.decodingId = null;
-    persist();
     return render();
   }
   if (d.retry) {

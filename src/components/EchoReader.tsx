@@ -21,8 +21,6 @@ export type Props = {
   onListen: () => void;
   /** Pick which letter to work on. Any letter, any order. */
   onSelect: (index: number) => void;
-  onGiveLetter: () => void;
-  onOpenUp: () => void;
   /** Playing the whole message back, once it's done. */
   onReplayAll: () => void;
   playing: boolean;
@@ -69,9 +67,7 @@ export default function EchoReader(props: Props) {
 
         {done ? (
           <Text style={[styles.tag, clean && styles.tagGood]}>
-            {clean
-              ? 'Decoded · perfect'
-              : `Decoded · ${props.state.misses} missed, ${props.state.given} given`}
+            {clean ? 'Perfect' : `${props.state.misses} missed`}
           </Text>
         ) : (
           <Text style={styles.tag}>
@@ -114,43 +110,20 @@ export default function EchoReader(props: Props) {
       {done ? (
         <Text style={styles.plain}>{plainText(props.symbols)}</Text>
       ) : props.active ? (
-        <>
-          {current >= 0 ? (
-            <View style={styles.progressRow}>
-              <Text style={styles.progressLabel}>Tap it back:</Text>
-              <Text style={styles.progressTapped}>
-                {tapped || '·'}
-                <Text style={styles.progressRest}>{target.slice(tapped.length)}</Text>
-              </Text>
-            </View>
-          ) : null}
-
-          <Text style={[styles.instruction, missed && styles.instructionBad]}>
-            {missed
-              ? 'Not that one — listen again and retry'
-              : current < 0
-                ? 'Tap any letter above to work on it'
-                : 'Tap that pattern on the key below'}
+        <View style={styles.progressRow}>
+          <Text style={[styles.progressLabel, missed && styles.instructionBad]}>
+            {missed ? 'Not that one' : 'Tap it back:'}
           </Text>
-
-          <View style={styles.helperRow}>
-            <TouchableOpacity
-              style={[styles.helper, current < 0 && styles.helperOff]}
-              onPress={props.onGiveLetter}
-              disabled={current < 0}
-            >
-              <Text style={styles.helperText}>Give me this one</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.helper} onPress={props.onOpenUp}>
-              <Text style={styles.helperTextDim}>Show all</Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      ) : (
-        <Text style={styles.instruction}>
-          A message arrived. Decode it by ear, one letter at a time.
-        </Text>
-      )}
+          {current >= 0 ? (
+            <Text style={styles.progressTapped}>
+              {tapped || '·'}
+              <Text style={styles.progressRest}>{target.slice(tapped.length)}</Text>
+            </Text>
+          ) : (
+            <Text style={styles.progressLabel}>pick a letter above</Text>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -167,12 +140,12 @@ const styles = StyleSheet.create({
   card: {
     alignSelf: 'flex-start',
     maxWidth: '96%',
-    padding: 12,
+    padding: 10,
     borderRadius: theme.radius,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.surface,
-    gap: 9,
+    gap: 8,
   },
   cardActive: { borderColor: theme.accent },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
@@ -214,24 +187,10 @@ const styles = StyleSheet.create({
   tileChar: { color: theme.textDim, fontSize: 16, fontWeight: '700', marginTop: 1 },
   tileCharShown: { color: theme.text },
   pillOff: { opacity: 0.4 },
-  helperOff: { opacity: 0.4 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   progressLabel: { color: theme.textDim, fontSize: 12 },
   progressTapped: { color: theme.accent, fontFamily: 'Courier', fontSize: 20, letterSpacing: 3 },
   progressRest: { color: theme.border },
-  instruction: { color: theme.text, fontSize: 13, fontWeight: '600' },
   instructionBad: { color: theme.bad },
-  helperRow: { flexDirection: 'row', gap: 8 },
-  helper: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surfaceHigh,
-  },
-  helperText: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  helperTextDim: { color: theme.textDim, fontSize: 13, fontWeight: '700' },
   plain: { color: theme.text, fontSize: 17, fontWeight: '700', letterSpacing: 0.5 },
 });

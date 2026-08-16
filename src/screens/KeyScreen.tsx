@@ -104,8 +104,6 @@ type Props = {
   onDecodeSymbol: (symbol: Symbol) => void;
   onEchoListen: (message: Message) => void;
   onEchoSelect: (message: Message, index: number) => void;
-  onEchoGiveLetter: (id: string) => void;
-  onEchoOpenUp: (id: string) => void;
 };
 
 export default function KeyScreen(props: Props) {
@@ -168,8 +166,6 @@ export default function KeyScreen(props: Props) {
               onStart={() => props.onStartDecode(message.id)}
               onListen={() => props.onEchoListen(message)}
               onSelect={(index) => props.onEchoSelect(message, index)}
-              onGiveLetter={() => props.onEchoGiveLetter(message.id)}
-              onOpenUp={() => props.onEchoOpenUp(message.id)}
               onReplayAll={() => props.onTogglePlay(message, false)}
               playing={props.playingId === message.id}
             />
