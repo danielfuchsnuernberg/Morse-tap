@@ -61,6 +61,13 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
 
     closingRef.current = false;
     let socket: WebSocket | null = null;
+    /**
+     * Each connection attempt gets a number. Only the newest one may
+     * reconnect when it closes - otherwise replacing a dead socket
+     * leaves the old one scheduling a second connection, and you end up
+     * in the room twice, receiving your own messages.
+     */
+    let generation = 0;
 
     const clearRetry = () => {
       if (retryRef.current) {
@@ -71,7 +78,12 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
 
     const open = () => {
       if (closingRef.current) return;
+      clearRetry();
       setStatus('connecting');
+
+      generation += 1;
+      const mine = generation;
+      const isCurrent = () => mine === generation;
 
       try {
         socket = new WebSocket(url.trim());
@@ -89,7 +101,8 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
         socket?.send(JSON.stringify({ type: 'join', room }));
       };
 
-      socket.onmessage = (event) => {
+      self.onmessage = (event) => {
+        if (!isCurrent()) return;
         lastHeardRef.current = Date.now();
         let message: any;
         try {
@@ -114,11 +127,13 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
         }
       };
 
-      socket.onerror = () => {
-        setLastError('Cannot reach server');
+      self.onerror = () => {
+        if (isCurrent()) setLastError('Cannot reach server');
       };
 
-      socket.onclose = () => {
+      self.onclose = () => {
+        // An old socket closing is expected and must change nothing.
+        if (!isCurrent()) return;
         socketRef.current = null;
         setPeers(0);
         if (closingRef.current) return;
@@ -132,11 +147,14 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
     };
 
     reopenRef.current = () => {
-      // Drop whatever we have and start again from scratch.
+      // Retire the current socket, then open a fresh one. Bumping the
+      // generation inside open() is what stops the old socket from
+      // starting a second connection of its own.
       clearRetry();
       attemptsRef.current = 0;
       const current = socketRef.current;
       socketRef.current = null;
+      open();
       if (current) {
         try {
           current.close();
@@ -144,7 +162,6 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
           /* ignore */
         }
       }
-      open();
     };
 
     open();

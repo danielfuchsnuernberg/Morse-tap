@@ -170,6 +170,11 @@ immediately, since that's the most likely moment to find a stale connection.
 And if a sent message gets no confirmation within 8 seconds, it goes **back in the queue** and the
 connection is rebuilt — rather than being quietly relabelled "Sent" and lost.
 
+Rebuilding a link is fiddlier than it looks. Each attempt is numbered, and only the newest socket is
+allowed to reconnect when it closes. Without that, retiring a dead socket leaves it opening a second
+connection of its own — and you end up sitting in the room twice, receiving your own messages. See
+`sim/reconnect.sim.mts`, which reproduces exactly that.
+
 ## How two people connect
 
 The connection status lives as a small dot beside the title. Tap it to open the room controls; tap
@@ -307,7 +312,7 @@ puts you straight back on track.
 ```bash
 npm test            # 182 logic tests
 npm run typecheck  # TypeScript, strict mode
-npm run test:server # 17 live server tests (boots the real server)
+npm run test:server # 23 live server tests (boots the real server)
 ```
 
 ## Not in v016

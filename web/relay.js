@@ -16,6 +16,13 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
   let closing = false;
   let lastHeard = 0;
   let heartbeat = null;
+  /**
+   * Each connection attempt gets a number. Only the newest may reconnect
+   * when it closes - otherwise replacing a dead socket leaves the old one
+   * opening a second connection, and you sit in the room twice, receiving
+   * your own messages.
+   */
+  let generation = 0;
 
   const clearRetry = () => {
     if (retry) clearTimeout(retry);
@@ -24,23 +31,40 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
 
   const open = () => {
     if (closing || room.length < 3) return;
+    clearRetry();
     onStatus('connecting', 0);
 
+    generation += 1;
+    const mine = generation;
+    const isCurrent = () => mine === generation;
+
+    let self;
     try {
-      socket = new WebSocket(url);
+      self = new WebSocket(url);
     } catch {
       onStatus('error', 0);
       return;
     }
+    socket = self;
 
-    socket.onopen = () => {
+    self.onopen = () => {
+      // A stale socket that finally opens must not join the room.
+      if (!isCurrent()) {
+        try {
+          self.close();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       attempts = 0;
       lastHeard = Date.now();
       onStatus('connected', 0);
-      socket.send(JSON.stringify({ type: 'join', room }));
+      self.send(JSON.stringify({ type: 'join', room }));
     };
 
-    socket.onmessage = (event) => {
+    self.onmessage = (event) => {
+      if (!isCurrent()) return;
       lastHeard = Date.now();
       let message;
       try {
@@ -58,7 +82,9 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
       }
     };
 
-    socket.onclose = () => {
+    self.onclose = () => {
+      // An old socket closing is expected and must change nothing.
+      if (!isCurrent()) return;
       socket = null;
       if (closing) return;
       onStatus('error', 0);
@@ -69,7 +95,7 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
       retry = setTimeout(open, delay);
     };
 
-    socket.onerror = () => undefined;
+    self.onerror = () => undefined;
   };
 
   /**
@@ -102,10 +128,14 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
   };
 
   const reopen = () => {
+    // Retire the current socket, then open a fresh one. Bumping the
+    // generation inside open() stops the old socket from starting a
+    // second connection of its own.
     clearRetry();
     attempts = 0;
     const current = socket;
     socket = null;
+    open();
     if (current) {
       try {
         current.close();
@@ -113,7 +143,6 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
         /* ignore */
       }
     }
-    open();
   };
 
   // Coming back to the app is the most likely moment for a stale link.

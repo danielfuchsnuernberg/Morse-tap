@@ -1,6 +1,6 @@
 {
   "name": "morse-tap",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -9,7 +9,7 @@
     "web": "expo start --web",
     "test": "tsx --test src/morse.test.ts src/settings.test.ts src/storage.test.ts",
     "typecheck": "tsc --noEmit",
-    "test:server": "cd server && npm install && node --test test.js delivery.test.js",
+    "test:server": "cd server && npm install && node --test test.js delivery.test.js duplicate.test.js",
     "test:sim": "for f in sim/*.sim.ts sim/*.sim.mts; do echo \"--- $f\"; tsx $f || exit 1; done",
     "build:web": "node scripts/build-web.mjs",
     "web:build": "node web/publish.mjs",
