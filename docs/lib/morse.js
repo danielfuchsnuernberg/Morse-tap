@@ -470,6 +470,50 @@ export const ECHO_START = {
     given: [],
     openedUp: false,
 };
+/**
+ * Rebuild an EchoState from whatever was stored, however old.
+ *
+ * Earlier versions kept `given` as a count and tracked progress with a
+ * single `index` cursor. Loading that straight into the current shape
+ * crashes, so anything unrecognised is rebuilt rather than trusted.
+ */
+export function sanitizeEcho(value, letterCount = Infinity) {
+    if (!value || typeof value !== 'object')
+        return { ...ECHO_START };
+    const raw = value;
+    const indices = (input) => {
+        if (!Array.isArray(input))
+            return [];
+        const seen = new Set();
+        for (const item of input) {
+            const index = Number(item);
+            if (Number.isInteger(index) && index >= 0 && index < letterCount)
+                seen.add(index);
+        }
+        return [...seen].sort((a, b) => a - b);
+    };
+    const solved = indices(raw.solved);
+    const given = indices(raw.given).filter((index) => !solved.includes(index));
+    // A pre-v020 save had a cursor but no lists. Everything before the
+    // cursor had been done, so treat those as given rather than lose them.
+    if (solved.length === 0 && given.length === 0 && typeof raw.index === 'number') {
+        const upTo = Math.max(0, Math.min(raw.index, letterCount === Infinity ? raw.index : letterCount));
+        for (let index = 0; index < upTo; index++)
+            given.push(index);
+    }
+    const current = Number(raw.current);
+    const misses = Number(raw.misses);
+    return {
+        current: Number.isInteger(current) && current >= 0 && current < letterCount ? current : -1,
+        heard: raw.heard === true,
+        tapped: typeof raw.tapped === 'string' ? raw.tapped.replace(/[^.-]/g, '') : '',
+        missed: raw.missed === true,
+        misses: Number.isFinite(misses) && misses >= 0 ? Math.floor(misses) : 0,
+        solved,
+        given,
+        openedUp: raw.openedUp === true,
+    };
+}
 /** How many letters the message has. */
 export function echoLetterCount(morse) {
     return splitLetters(morse).length;

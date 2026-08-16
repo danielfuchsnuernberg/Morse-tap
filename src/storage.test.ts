@@ -10,7 +10,7 @@ import {
   MAX_STORED_MESSAGES,
 } from './storage';
 import { DEFAULT_PREFS } from './settings';
-import { ECHO_START, EMPTY_PUZZLE } from './morse';
+import { ECHO_START, EMPTY_PUZZLE, encodeText, echoTiles, sanitizeEcho } from './morse';
 import type { Message } from './screens/KeyScreen';
 
 const message = (over: Partial<Message> = {}): Message => ({
@@ -152,4 +152,67 @@ test('new ids continue from the restored ones instead of colliding', () => {
 test('an empty or odd log starts ids from zero', () => {
   assert.equal(highestIdNumber([]), 0);
   assert.equal(highestIdNumber([message({ id: 'weird' })]), 0);
+});
+
+/* ---------------- upgrading from an older save ---------------- */
+
+test('a v019 message loads instead of crashing', () => {
+  // v019 kept a cursor and counts, not lists. This exact shape caused
+  // "state.given.includes is not a function" on a real phone.
+  const old = [
+    {
+      id: 'm1',
+      mine: false,
+      symbols: encodeText('SOS'),
+      at: 1,
+      echo: { index: 2, heard: true, tapped: '.', missed: false, misses: 1, given: 1, openedUp: false },
+    },
+  ];
+  const parsed = parseMessages(JSON.stringify(old));
+  assert.equal(parsed.length, 1);
+  assert.ok(Array.isArray(parsed[0].echo.solved), 'solved must be a list');
+  assert.ok(Array.isArray(parsed[0].echo.given), 'given must be a list, not a count');
+  // The old cursor said two letters were done, so they must not be lost.
+  assert.equal(parsed[0].echo.given.length + parsed[0].echo.solved.length, 2);
+});
+
+test('the reader survives every shape of rubbish in stored decode state', () => {
+  const nasty = [
+    { echo: { given: 3, solved: 'lots', index: 1 } },
+    { echo: { given: null, solved: null } },
+    { echo: { solved: [0, 0, 1, 'x', -5, 99] } },
+    { echo: 'not an object' },
+    { echo: null },
+    { echo: { current: 'first', misses: -4, tapped: 'hello' } },
+  ].map((extra, index) => ({
+    id: `m${index}`,
+    mine: false,
+    symbols: encodeText('SOS'),
+    at: index,
+    ...extra,
+  }));
+
+  const parsed = parseMessages(JSON.stringify(nasty));
+  assert.equal(parsed.length, nasty.length);
+  for (const message of parsed) {
+    assert.ok(Array.isArray(message.echo.solved));
+    assert.ok(Array.isArray(message.echo.given));
+    assert.ok(message.echo.solved.every((i) => Number.isInteger(i) && i >= 0 && i < 3));
+    assert.ok(message.echo.given.every((i) => Number.isInteger(i) && i >= 0 && i < 3));
+    assert.ok(message.echo.misses >= 0);
+    assert.match(message.echo.tapped, /^[.-]*$/);
+    // And the thing that actually crashed must now work.
+    assert.doesNotThrow(() => echoTiles(message.symbols, message.echo));
+  }
+});
+
+test('a letter cannot be both solved and given', () => {
+  const parsed = sanitizeEcho({ solved: [0, 1], given: [1, 2] }, 3);
+  assert.deepEqual(parsed.solved, [0, 1]);
+  assert.deepEqual(parsed.given, [2]);
+});
+
+test('an out-of-range cursor is parked rather than pointing at nothing', () => {
+  assert.equal(sanitizeEcho({ current: 99 }, 3).current, -1);
+  assert.equal(sanitizeEcho({ current: 1 }, 3).current, 1);
 });

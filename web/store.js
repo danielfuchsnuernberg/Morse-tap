@@ -4,6 +4,8 @@
  * Same shape as the phone app's storage, and just as forgiving:
  * corrupt data falls back to defaults rather than breaking startup.
  */
+import { sanitizeEcho, echoLetterCount } from './lib/morse.js';
+
 const KEY = 'morse-tap:v1';
 
 export const DEFAULTS = {
@@ -40,6 +42,12 @@ export function load() {
     state.messages = Array.isArray(stored.messages)
       ? stored.messages
           .filter((m) => m && typeof m.symbols === 'string' && m.symbols.length > 0)
+          .map((m) => ({
+            ...m,
+            // An older save stored decode progress in a different shape;
+            // rebuild it rather than trusting it and crashing on load.
+            echo: sanitizeEcho(m.echo, echoLetterCount(m.symbols)),
+          }))
           .slice(-MAX_MESSAGES)
       : [];
     if (typeof state.serverUrl !== 'string' || state.serverUrl.length === 0) {

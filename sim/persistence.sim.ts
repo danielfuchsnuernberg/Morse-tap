@@ -8,6 +8,7 @@ import {
   parsePrefs, parseSession, parseMessages, trimMessages, highestIdNumber,
   MAX_STORED_MESSAGES,
 } from '../src/storage';
+import { echoTiles, echoComplete } from '../src/morse';
 import { DEFAULT_PREFS, clampEffective, type Prefs } from '../src/settings';
 import {
   ECHO_START, EMPTY_PUZZLE, encodeText, echoHear, echoTap, echoSelect, splitLetters,
@@ -140,4 +141,39 @@ process.exit(problems.length ? 1 : 0);
   check(by('b').delivery === 'queued', 'a message left mid-flight must be retried, not assumed sent');
   check(by('c').delivery === 'queued', 'a queued message must stay queued');
   check(by('e').delivery === 'none', 'a received message should have no delivery state');
+}
+
+
+/* ---- an older save must load, not crash ---- */
+{
+  // Exactly what v019 wrote: a cursor and counts, not lists.
+  const v019 = [
+    { id: 'm1', mine: false, symbols: encodeText('I LOVE YOU'), at: 1,
+      echo: { index: 3, heard: true, tapped: '..', missed: false, misses: 2, given: 1, openedUp: false } },
+    { id: 'm2', mine: true, symbols: encodeText('OK'), at: 2, delivery: 'delivered' },
+  ];
+
+  let loaded: ReturnType<typeof parseMessages> = [];
+  try {
+    loaded = parseMessages(JSON.stringify(v019));
+  } catch (error) {
+    problems.push(`loading a v019 save threw: ${String(error)}`);
+  }
+
+  check(loaded.length === 2, 'a v019 save lost messages');
+  if (loaded.length === 2) {
+    const echo = loaded[0].echo;
+    check(Array.isArray(echo.solved), 'solved must be a list after loading');
+    check(Array.isArray(echo.given), 'given must be a list, not the old count');
+    check(echo.solved.length + echo.given.length === 3, 'progress from the old cursor was lost');
+
+    // This is the call that crashed on a real phone.
+    try {
+      const tiles = echoTiles(loaded[0].symbols, echo);
+      check(tiles.length === 8, 'tiles did not render for a migrated message');
+      check(!echoComplete(loaded[0].symbols, echo), 'a part-done message should not read as complete');
+    } catch (error) {
+      problems.push(`rendering a migrated message threw: ${String(error)}`);
+    }
+  }
 }

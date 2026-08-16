@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_PREFS, clampEffective, type Prefs } from './settings';
-import { ECHO_START, EMPTY_PUZZLE } from './morse';
+import { ECHO_START, EMPTY_PUZZLE, echoLetterCount, sanitizeEcho } from './morse';
 import type { Message } from './screens/KeyScreen';
 
 const KEY_PREFS = 'morse-tap:prefs:v1';
@@ -91,7 +91,9 @@ export function parseMessages(raw: string | null): Message[] {
         symbols: item.symbols,
         at: typeof item.at === 'number' ? item.at : Date.now(),
         puzzle: { ...EMPTY_PUZZLE, ...(item.puzzle ?? {}) },
-        echo: { ...ECHO_START, ...(item.echo ?? {}) },
+        // Never spread stored echo state straight in - an older save has
+        // a different shape and would crash the reader on load.
+        echo: sanitizeEcho(item.echo, echoLetterCount(item.symbols)),
         // A message still queued when the app closed should try again,
         // and one left mid-flight can't be confirmed after a restart.
         delivery: !item.mine
