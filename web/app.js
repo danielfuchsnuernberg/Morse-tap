@@ -20,12 +20,16 @@ import {
   ECHO_START,
   echoHear,
   echoTap,
+  echoSelect,
   echoTiles,
   echoComplete,
   echoClean,
   echoTargetCode,
   echoGiveLetter,
   echoOpenUp,
+  echoProgress,
+  echoIsDone,
+  nextUnsolved,
 } from './lib/morse.js';
 import { createTone, createPlayer } from './tone.js';
 import { load, save } from './store.js';
@@ -227,14 +231,14 @@ function keyUp() {
   if (state.decodingId) {
     const message = state.messages.find((m) => m.id === state.decodingId);
     if (message) {
-      const before = message.echo.index;
+      const before = message.echo.solved.length;
       message.echo = echoTap(message.symbols, message.echo, symbolForPress(duration, timing()));
       const done = echoComplete(message.symbols, message.echo);
       if (done) state.decodingId = null;
       persist();
       render();
       // Finished a letter? Sound the next one automatically.
-      if (!done && message.echo.index > before) {
+      if (!done && message.echo.solved.length > before) {
         const code = echoTargetCode(message.symbols, message.echo);
         if (code) {
           message.echo = echoHear(message.echo);
@@ -350,28 +354,33 @@ function messageHtml(message) {
   const tileHtml = tokens
     .map((token, index) => {
       const tileState = tiles[index];
-      const current = tileState === 'listening' || tileState === 'tapping';
+      const shown = tileState === 'solved' || tileState === 'given';
+      const isCurrent = tileState === 'current';
       // Always show the dots and dashes. The letter is what you earn.
-      const code = token.code;
-      const char = tileState === 'revealed' ? answer[index] : '_';
-      return `<div class="tile${tileState === 'revealed' ? ' revealed' : ''}${
-        current && active ? ' current' : ''
-      }${echo.missed && current ? ' missed' : ''}${
-        token.startsWord && index > 0 ? ' wordbreak' : ''
-      }"><span class="code">${code}</span><span class="char">${char}</span></div>`;
+      return `<button class="tile${shown ? ' shown' : ''}${
+        tileState === 'solved' ? ' solved' : ''
+      }${tileState === 'given' ? ' given' : ''}${isCurrent && active ? ' current' : ''}${
+        echo.missed && isCurrent ? ' missed' : ''
+      }${token.startsWord && index > 0 ? ' wordbreak' : ''}"
+        ${shown || done ? 'disabled' : `data-pick="${message.id}:${index}"`}
+      ><span class="code">${token.code}</span><span class="char">${
+        shown ? answer[index] : '_'
+      }</span></button>`;
     })
     .join('');
 
   const tag = done
     ? `<span class="tag ${clean ? 'good' : ''}">${
-        clean ? 'Decoded · perfect' : `Decoded · ${echo.misses} missed, ${echo.given} given`
+        clean ? 'Decoded · perfect' : `Decoded · ${echo.misses} missed, ${echo.given.length} given`
       }</span>`
-    : `<span class="tag">${echo.index}/${tokens.length}</span>`;
+    : `<span class="tag">${echoProgress(message.symbols, echo)}/${tokens.length}</span>`;
 
   const controls = done
     ? `<button class="pill" data-play="${message.id}">${playing ? '■ Stop' : '▶ Replay'}</button>`
     : active
-      ? `<button class="pill" data-listen="${message.id}">♪ Hear it again</button>`
+      ? `<button class="pill" data-listen="${message.id}" ${
+          echo.current < 0 ? 'disabled' : ''
+        }>♪ Hear it again</button>`
       : `<button class="pill" data-decode="${message.id}">Decode this</button>`;
 
   const instruction = done
@@ -380,10 +389,14 @@ function messageHtml(message) {
       ? `<div class="instruction${echo.missed ? ' bad' : ''}">${
           echo.missed
             ? 'Not that one — listen again and retry'
-            : `Tap it back: <b>${esc(echo.tapped || '·')}</b>`
+            : echo.current < 0
+              ? 'Tap any letter above to work on it'
+              : `Tap it back: <b>${esc(echo.tapped || '·')}</b>`
         }</div>
          <div class="row">
-           <button class="helper" data-skip="${message.id}">Skip this letter</button>
+           <button class="helper" data-skip="${message.id}" ${
+             echo.current < 0 ? 'disabled' : ''
+           }>Give me this one</button>
            <button class="helper dim" data-showall="${message.id}">Show all</button>
          </div>`
       : '<div class="instruction dim">A message arrived. Decode it by ear.</div>';
@@ -518,7 +531,7 @@ function settingsHtml() {
       }</button>
     </div>
 
-    <div class="version">Morse Tap · web · v019</div>`;
+    <div class="version">Morse Tap · web · v020</div>`;
 }
 
 function render() {
@@ -594,7 +607,7 @@ function step(key, direction) {
 }
 
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-play],[data-listen],[data-decode],[data-skip],[data-showall],[data-retry],[data-code],[data-mode],[data-step],[data-sound],[data-clear]');
+  const target = event.target.closest('[data-play],[data-listen],[data-decode],[data-pick],[data-skip],[data-showall],[data-retry],[data-code],[data-mode],[data-step],[data-sound],[data-clear]');
   if (!target) return;
   tone.unlock();
   const d = target.dataset;
@@ -605,12 +618,33 @@ document.addEventListener('click', (event) => {
   if (d.decode) {
     state.decodingId = d.decode;
     const message = state.messages.find((m) => m.id === d.decode);
+    if (message.echo.current < 0) {
+      message.echo = echoSelect(
+        message.symbols,
+        message.echo,
+        nextUnsolved(message.symbols, message.echo)
+      );
+    }
     const code = echoTargetCode(message.symbols, message.echo);
     if (code) {
       message.echo = echoHear(message.echo);
       playMessage(message.id + ':echo', code);
       persist();
     }
+    return render();
+  }
+  if (d.pick) {
+    // Any letter, any order.
+    const [id, rawIndex] = d.pick.split(':');
+    const message = state.messages.find((m) => m.id === id);
+    if (!message) return;
+    const selected = echoSelect(message.symbols, message.echo, Number(rawIndex));
+    if (selected === message.echo) return;
+    state.decodingId = id;
+    message.echo = echoHear(selected);
+    const code = echoTargetCode(message.symbols, message.echo);
+    if (code) playMessage(id + ':echo', code);
+    persist();
     return render();
   }
   if (d.listen) {

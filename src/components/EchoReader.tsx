@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
 import {
   answerLetters,
@@ -6,6 +6,8 @@ import {
   echoComplete,
   echoTargetCode,
   echoTiles,
+  echoProgress,
+  echoIsDone,
   splitLetters,
   type EchoState,
 } from '../morse';
@@ -17,6 +19,8 @@ export type Props = {
   active: boolean;
   onStart: () => void;
   onListen: () => void;
+  /** Pick which letter to work on. Any letter, any order. */
+  onSelect: (index: number) => void;
   onGiveLetter: () => void;
   onOpenUp: () => void;
   /** Playing the whole message back, once it's done. */
@@ -37,7 +41,8 @@ export default function EchoReader(props: Props) {
   const done = echoComplete(props.symbols, props.state);
   const clean = echoClean(props.symbols, props.state);
   const target = echoTargetCode(props.symbols, props.state);
-  const { heard, tapped, missed, index } = props.state;
+  const { heard, tapped, missed, current } = props.state;
+  const progress = echoProgress(props.symbols, props.state);
 
   return (
     <View style={[styles.card, props.active && styles.cardActive]}>
@@ -48,9 +53,13 @@ export default function EchoReader(props: Props) {
             <Text style={styles.pillLabel}>{props.playing ? 'Stop' : 'Replay'}</Text>
           </TouchableOpacity>
         ) : props.active ? (
-          <TouchableOpacity style={[styles.pill, !heard && styles.pillCue]} onPress={props.onListen}>
-            <Text style={[styles.pillIcon, !heard && styles.ink]}>♪</Text>
-            <Text style={[styles.pillLabel, !heard && styles.ink]}>Hear it again</Text>
+          <TouchableOpacity
+            style={[styles.pill, current < 0 && styles.pillOff]}
+            onPress={props.onListen}
+            disabled={current < 0}
+          >
+            <Text style={styles.pillIcon}>♪</Text>
+            <Text style={styles.pillLabel}>Hear it again</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.pill} onPress={props.onStart}>
@@ -66,36 +75,37 @@ export default function EchoReader(props: Props) {
           </Text>
         ) : (
           <Text style={styles.tag}>
-            {index}/{tokens.length}
+            {progress}/{tokens.length}
           </Text>
         )}
       </View>
 
-      {/* one tile per letter, unlocked left to right */}
+      {/* one tile per letter - tap any of them to work on it */}
       <View style={styles.tiles}>
         {tokens.map((token, tileIndex) => {
           const state = tiles[tileIndex];
-          const current = state === 'listening' || state === 'tapping';
+          const shown = state === 'solved' || state === 'given';
+          const isCurrent = state === 'current';
           return (
-            <View
+            <Pressable
               key={tileIndex}
+              onPress={() => props.onSelect(tileIndex)}
+              disabled={done || echoIsDone(props.state, tileIndex)}
               style={[
                 styles.tile,
                 token.startsWord && tileIndex > 0 ? styles.wordBreak : null,
-                state === 'revealed' && styles.tileRevealed,
-                current && props.active && styles.tileCurrent,
-                current && missed && styles.tileMissed,
+                state === 'solved' && styles.tileSolved,
+                state === 'given' && styles.tileGiven,
+                isCurrent && props.active && styles.tileCurrent,
+                isCurrent && missed && styles.tileMissed,
               ]}
             >
-              {/* The dots and dashes are always shown. The letter is not:
-                  that only appears once you've tapped the pattern back. */}
-              <Text style={[styles.tileCode, state === 'revealed' && styles.tileCodeRevealed]}>
-                {token.code}
+              {/* The pattern is always visible. The letter is what you earn. */}
+              <Text style={[styles.tileCode, shown && styles.tileCodeShown]}>{token.code}</Text>
+              <Text style={[styles.tileChar, shown && styles.tileCharShown]}>
+                {shown ? answer[tileIndex] : '_'}
               </Text>
-              <Text style={[styles.tileChar, state === 'revealed' && styles.tileCharRevealed]}>
-                {state === 'revealed' ? answer[tileIndex] : '_'}
-              </Text>
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -105,7 +115,7 @@ export default function EchoReader(props: Props) {
         <Text style={styles.plain}>{plainText(props.symbols)}</Text>
       ) : props.active ? (
         <>
-          {heard ? (
+          {current >= 0 ? (
             <View style={styles.progressRow}>
               <Text style={styles.progressLabel}>Tap it back:</Text>
               <Text style={styles.progressTapped}>
@@ -118,12 +128,18 @@ export default function EchoReader(props: Props) {
           <Text style={[styles.instruction, missed && styles.instructionBad]}>
             {missed
               ? 'Not that one — listen again and retry'
-              : 'Tap that pattern on the key below'}
+              : current < 0
+                ? 'Tap any letter above to work on it'
+                : 'Tap that pattern on the key below'}
           </Text>
 
           <View style={styles.helperRow}>
-            <TouchableOpacity style={styles.helper} onPress={props.onGiveLetter}>
-              <Text style={styles.helperText}>Skip this letter</Text>
+            <TouchableOpacity
+              style={[styles.helper, current < 0 && styles.helperOff]}
+              onPress={props.onGiveLetter}
+              disabled={current < 0}
+            >
+              <Text style={styles.helperText}>Give me this one</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.helper} onPress={props.onOpenUp}>
               <Text style={styles.helperTextDim}>Show all</Text>
@@ -189,13 +205,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
   },
-  tileRevealed: { borderColor: theme.good },
+  tileSolved: { borderColor: theme.good },
+  tileGiven: { borderColor: theme.textDim, borderStyle: 'dashed' },
   tileCurrent: { borderColor: theme.accent, borderWidth: 2 },
   tileMissed: { borderColor: theme.bad, borderWidth: 2 },
-  tileCode: { color: theme.textDim, fontFamily: 'Courier', fontSize: 11, letterSpacing: 1 },
-  tileCodeRevealed: { color: theme.accent },
+  tileCode: { color: theme.accent, fontFamily: 'Courier', fontSize: 11, letterSpacing: 1 },
+  tileCodeShown: { color: theme.textDim },
   tileChar: { color: theme.textDim, fontSize: 16, fontWeight: '700', marginTop: 1 },
-  tileCharRevealed: { color: theme.text },
+  tileCharShown: { color: theme.text },
+  pillOff: { opacity: 0.4 },
+  helperOff: { opacity: 0.4 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   progressLabel: { color: theme.textDim, fontSize: 12 },
   progressTapped: { color: theme.accent, fontFamily: 'Courier', fontSize: 20, letterSpacing: 3 },

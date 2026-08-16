@@ -9,7 +9,9 @@ import {
   MAX_STORED_MESSAGES,
 } from '../src/storage';
 import { DEFAULT_PREFS, clampEffective, type Prefs } from '../src/settings';
-import { ECHO_START, EMPTY_PUZZLE, encodeText, echoHear, echoTap, splitLetters } from '../src/morse';
+import {
+  ECHO_START, EMPTY_PUZZLE, encodeText, echoHear, echoTap, echoSelect, splitLetters,
+} from '../src/morse';
 import type { Message } from '../src/screens/KeyScreen';
 
 const problems: string[] = [];
@@ -54,13 +56,13 @@ for (const prefs of [
 
   // Decode the first three letters, then "close the app".
   let echo = ECHO_START;
-  codes.slice(0, 3).forEach((code) => {
-    echo = echoHear(echo);
+  codes.slice(0, 3).forEach((code, index) => {
+    echo = echoHear(echoSelect(symbols, echo, index));
     code.split('').forEach((symbol) => {
       echo = echoTap(symbols, echo, symbol as '.' | '-');
     });
   });
-  check(echo.index === 3, 'setup: should be three letters in');
+  check(echo.solved.length === 3, 'setup: should be three letters in');
 
   const before: Message[] = [
     { id: 'm1', mine: true, symbols: encodeText('OK'), at: 1, puzzle: EMPTY_PUZZLE, echo: ECHO_START, delivery: 'delivered' },
@@ -69,19 +71,20 @@ for (const prefs of [
   const after = cycle.messages(before);
 
   check(after.length === 2, 'a message went missing');
-  check(after[1].echo.index === 3, 'decoding progress was lost');
+  check(after[1].echo.solved.length === 3, 'decoding progress was lost');
   check(after[1].symbols === symbols, 'the message itself changed');
   check(after[0].mine === true && after[1].mine === false, 'who sent what got confused');
 
   // And decoding carries on correctly from the restored state.
   let resumed = after[1].echo;
-  codes.slice(3).forEach((code) => {
-    resumed = echoHear(resumed);
+  codes.forEach((code, index) => {
+    if (resumed.solved.includes(index)) return;
+    resumed = echoHear(echoSelect(symbols, resumed, index));
     code.split('').forEach((symbol) => {
       resumed = echoTap(symbols, resumed, symbol as '.' | '-');
     });
   });
-  check(resumed.index === codes.length, 'could not finish decoding after a restart');
+  check(resumed.solved.length === codes.length, 'could not finish decoding after a restart');
 }
 
 /* ---- ids never collide with restored ones ---- */

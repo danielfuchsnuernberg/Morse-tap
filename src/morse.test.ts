@@ -56,6 +56,10 @@ import {
   echoOpenUp,
   echoTiles,
   echoClean,
+  echoSelect,
+  echoProgress,
+  echoIsDone,
+  nextUnsolved,
   type EchoState,
 } from './morse';
 
@@ -1002,140 +1006,115 @@ test('a deliberate space still works even in farnsworth mode', () => {
 
 const SOS = encodeText('SOS');
 
-test('a fresh message shows nothing at all', () => {
-  assert.deepEqual(echoTiles(SOS, ECHO_START), ['listening', 'locked', 'locked']);
+test('a fresh message has nothing solved and nothing selected', () => {
+  assert.deepEqual(echoTiles(SOS, ECHO_START), ['todo', 'todo', 'todo']);
+  assert.equal(ECHO_START.current, -1);
   assert.equal(echoComplete(SOS, ECHO_START), false);
 });
 
+test('any letter can be selected, not just the first', () => {
+  const picked = echoSelect(SOS, ECHO_START, 2);
+  assert.equal(picked.current, 2);
+  assert.deepEqual(echoTiles(SOS, picked), ['todo', 'todo', 'current']);
+});
+
+test('selecting out of range does nothing', () => {
+  assert.deepEqual(echoSelect(SOS, ECHO_START, 9), ECHO_START);
+  assert.deepEqual(echoSelect(SOS, ECHO_START, -1), ECHO_START);
+});
+
 test('you cannot tap a letter you have not heard', () => {
-  const after = echoTap(SOS, ECHO_START, '.');
-  assert.deepEqual(after, ECHO_START, 'tapping before listening should do nothing');
+  const picked = echoSelect(SOS, ECHO_START, 0);
+  assert.deepEqual(echoTap(SOS, picked, '.'), picked);
 });
 
-test('listening reveals the pattern but not the letter', () => {
-  const heard = echoHear(ECHO_START);
-  assert.deepEqual(echoTiles(SOS, heard), ['tapping', 'locked', 'locked']);
-  assert.equal(heard.index, 0, 'listening must not advance');
+test('tapping the pattern back solves that letter', () => {
+  let state = echoHear(echoSelect(SOS, ECHO_START, 0));
+  state = echoTap(SOS, state, '.');
+  state = echoTap(SOS, state, '.');
+  assert.deepEqual(state.solved, []);
+  state = echoTap(SOS, state, '.');
+  assert.deepEqual(state.solved, [0]);
+  assert.equal(echoTiles(SOS, state)[0], 'solved');
 });
 
-test('tapping the pattern correctly advances to the next letter', () => {
-  let state = echoHear(ECHO_START);
-  state = echoTap(SOS, state, '.');
-  state = echoTap(SOS, state, '.');
-  assert.equal(state.index, 0, 'two of three dots is not a whole letter');
-  state = echoTap(SOS, state, '.');
-  assert.equal(state.index, 1);
-  assert.equal(state.heard, false, 'the next letter starts unheard');
-  assert.equal(state.tapped, '');
-});
-
-test('a completed letter is revealed, the next one is not', () => {
-  let state = echoHear(ECHO_START);
+test('solving a letter moves on to the next one still to do', () => {
+  let state = echoHear(echoSelect(SOS, ECHO_START, 0));
   '...'.split('').forEach((symbol) => {
     state = echoTap(SOS, state, symbol as '.' | '-');
   });
-  assert.deepEqual(echoTiles(SOS, state), ['revealed', 'listening', 'locked']);
+  assert.equal(state.current, 1);
+  assert.equal(state.heard, false);
 });
 
-test('a wrong symbol resets the letter and counts a miss', () => {
-  let state = echoHear(ECHO_START);
-  state = echoTap(SOS, state, '.');
-  state = echoTap(SOS, state, '-');
-  assert.equal(state.tapped, '', 'the letter should reset');
-  assert.ok(state.missed);
-  assert.equal(state.misses, 1);
-  assert.equal(state.index, 0, 'a miss must not advance');
-});
-
-test('a miss keeps the letter heard so you can retry straight away', () => {
-  let state = echoHear(ECHO_START);
-  state = echoTap(SOS, state, '-');
-  assert.ok(state.heard, 'you should not have to listen again after a miss');
-});
-
-test('you can recover from a miss and still finish the letter', () => {
-  let state = echoHear(ECHO_START);
-  state = echoTap(SOS, state, '-');
-  '...'.split('').forEach((symbol) => {
+test('solving the middle letter first jumps back to the start after', () => {
+  let state = echoHear(echoSelect(SOS, ECHO_START, 1));
+  '---'.split('').forEach((symbol) => {
     state = echoTap(SOS, state, symbol as '.' | '-');
   });
-  assert.equal(state.index, 1);
-  assert.equal(state.misses, 1);
+  assert.deepEqual(state.solved, [1]);
+  assert.equal(state.current, 2, 'should go forwards first');
 });
 
-test('undo removes one tapped symbol', () => {
-  let state = echoHear(ECHO_START);
-  state = echoTap(SOS, state, '.');
-  state = echoTap(SOS, state, '.');
-  state = echoUndo(state);
-  assert.equal(state.tapped, '.');
+test('the cursor wraps round to earlier letters', () => {
+  let state: EchoState = { ...ECHO_START, solved: [1, 2], current: 2 };
+  assert.equal(nextUnsolved(SOS, state, 3), 0);
 });
 
-test('undo on an empty letter is harmless', () => {
-  const state = echoUndo(echoHear(ECHO_START));
+test('a wrong tap resets only that letter', () => {
+  let state = echoHear(echoSelect(SOS, ECHO_START, 0));
+  state = echoTap(SOS, state, '-');
   assert.equal(state.tapped, '');
-  assert.equal(state.index, 0);
+  assert.equal(state.misses, 1);
+  assert.equal(state.current, 0);
+  assert.ok(state.heard);
+  assert.deepEqual(state.solved, []);
 });
 
-test('being given a letter advances but is recorded', () => {
-  const state = echoGiveLetter(SOS, ECHO_START);
-  assert.equal(state.index, 1);
-  assert.equal(state.given, 1);
-  assert.equal(echoClean(SOS, state), false);
+test('an already-solved letter cannot be selected again', () => {
+  const solved: EchoState = { ...ECHO_START, solved: [0], current: 1 };
+  assert.equal(echoSelect(SOS, solved, 0).current, 1);
 });
 
-test('the target code is always the letter you are on', () => {
-  assert.equal(echoTargetCode(SOS, ECHO_START), '...');
-  assert.equal(echoTargetCode(SOS, { ...ECHO_START, index: 1 }), '---');
-  assert.equal(echoTargetCode(SOS, { ...ECHO_START, index: 9 }), '');
+test('progress counts solved and given together', () => {
+  assert.equal(echoProgress(SOS, { ...ECHO_START, solved: [0], given: [2] }), 2);
+  assert.equal(echoProgress(SOS, echoOpenUp(ECHO_START)), 3);
 });
 
-test('working through the whole message completes it', () => {
-  let state: EchoState = ECHO_START;
-  const codes = splitLetters(SOS).map((token) => token.code);
-  codes.forEach((code) => {
-    state = echoHear(state);
-    code.split('').forEach((symbol) => {
-      state = echoTap(SOS, state, symbol as '.' | '-');
-    });
-  });
-  assert.ok(echoComplete(SOS, state));
-  assert.ok(echoClean(SOS, state));
-  assert.deepEqual(echoTiles(SOS, state), ['revealed', 'revealed', 'revealed']);
-});
-
-test('tapping after completion changes nothing', () => {
-  let state: EchoState = { ...ECHO_START, index: 3, heard: true };
-  const after = echoTap(SOS, state, '.');
-  assert.deepEqual(after, state);
-});
-
-test('giving up reveals everything but is never a clean solve', () => {
-  const state = echoOpenUp(ECHO_START);
-  assert.ok(echoComplete(SOS, state));
-  assert.equal(echoClean(SOS, state), false);
-  assert.deepEqual(echoTiles(SOS, state), ['revealed', 'revealed', 'revealed']);
+test('a message is complete when every letter is got, in any order', () => {
+  assert.ok(echoComplete(SOS, { ...ECHO_START, solved: [2, 0, 1] }));
+  assert.ok(echoComplete(SOS, { ...ECHO_START, solved: [1], given: [0, 2] }));
+  assert.equal(echoComplete(SOS, { ...ECHO_START, solved: [0, 1] }), false);
 });
 
 test('an empty message is never complete', () => {
   assert.equal(echoComplete('', ECHO_START), false);
 });
 
-test('a miss anywhere means it was not a clean solve', () => {
-  let state: EchoState = ECHO_START;
-  splitLetters(SOS).forEach((token, index) => {
-    state = echoHear(state);
-    if (index === 1) state = echoTap(SOS, state, token.code[0] === '.' ? '-' : '.');
-    token.code.split('').forEach((symbol) => {
-      state = echoTap(SOS, state, symbol as '.' | '-');
-    });
-  });
+test('a clean solve means no misses and no help, whatever the order', () => {
+  assert.ok(echoClean(SOS, { ...ECHO_START, solved: [2, 1, 0] }));
+  assert.equal(echoClean(SOS, { ...ECHO_START, solved: [0, 1], given: [2] }), false);
+  assert.equal(echoClean(SOS, { ...ECHO_START, solved: [0, 1, 2], misses: 1 }), false);
+});
+
+test('skipping hands over the current letter and moves on', () => {
+  const state = echoGiveLetter(SOS, echoSelect(SOS, ECHO_START, 1));
+  assert.deepEqual(state.given, [1]);
+  assert.equal(state.current, 2);
+});
+
+test('giving up reveals everything and parks the cursor', () => {
+  const state = echoOpenUp(ECHO_START);
   assert.ok(echoComplete(SOS, state));
-  assert.equal(echoClean(SOS, state), false);
-  assert.equal(state.misses, 1);
+  assert.equal(state.current, -1);
+  assert.deepEqual(echoTiles(SOS, state), ['given', 'given', 'given']);
+});
+
+test('the target code follows the selected letter', () => {
+  assert.equal(echoTargetCode(SOS, echoSelect(SOS, ECHO_START, 1)), '---');
+  assert.equal(echoTargetCode(SOS, ECHO_START), '');
 });
 
 test('word breaks are not letters and never need tapping', () => {
-  const goal = encodeText('HI YOU');
-  assert.equal(echoTiles(goal, ECHO_START).length, 5);
+  assert.equal(echoTiles(encodeText('HI YOU'), ECHO_START).length, 5);
 });

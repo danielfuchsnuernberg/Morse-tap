@@ -1,124 +1,170 @@
 /**
- * Decoding by ear, end to end, exactly as the UI drives it.
+ * Decoding by ear, in any order.
  *
- * The rule that matters: a letter must never be visible before the user
- * has heard it AND tapped it back.
+ * Two rules that matter:
+ *   1. A letter must never be visible before it's been earned.
+ *   2. You can work on any letter you like, in any order.
  */
 import {
-  encodeText, splitLetters, ECHO_START, echoHear, echoTap, echoTiles,
-  echoComplete, echoClean, echoTargetCode, echoGiveLetter, echoOpenUp,
-  echoUndo, type EchoState, type Symbol,
+  encodeText, splitLetters, ECHO_START, echoSelect, echoHear, echoTap, echoTiles,
+  echoComplete, echoClean, echoTargetCode, echoGiveLetter, echoOpenUp, echoUndo,
+  echoProgress, echoIsDone, nextUnsolved, type EchoState, type Symbol,
 } from '../src/morse';
 
 const problems: string[] = [];
 const check = (ok: boolean, msg: string) => { if (!ok) problems.push(msg); };
 
-const phrases = ['I LOVE YOU', 'SOS', 'ON MY WAY', 'MEET ME AT 5', 'OK', 'E'];
+const phrases = ['I LOVE YOU', 'SOS', 'ON MY WAY', 'HELLO STRANGER', 'OK', 'E'];
 
 for (const phrase of phrases) {
   const morse = encodeText(phrase);
   const codes = splitLetters(morse).map((token) => token.code);
 
-  /* ---- the leak check, run after every single interaction ---- */
-  // The dots and dashes are visible from the start now; the LETTER is
-  // what must never appear before it has been heard and tapped back.
+  /** No letter may show before it has been earned. */
   const assertNoLeak = (state: EchoState, where: string) => {
-    const tiles = echoTiles(morse, state);
-    tiles.forEach((tile, index) => {
-      if (tile === 'revealed' && !state.openedUp) {
-        check(index < state.index, `${phrase}: letter ${index} revealed early (${where})`);
+    echoTiles(morse, state).forEach((tile, index) => {
+      const shown = tile === 'solved' || tile === 'given';
+      if (shown && !state.openedUp) {
+        check(echoIsDone(state, index), `${phrase}: letter ${index} shown unearned (${where})`);
       }
-      if (index > state.index) {
-        check(tile === 'locked', `${phrase}: letter ${index} not locked (${where})`);
+      if (!shown && !state.openedUp) {
+        check(!echoIsDone(state, index), `${phrase}: letter ${index} earned but hidden (${where})`);
       }
     });
   };
 
-  /* ---- a perfect run ---- */
+  /* ---- nothing given away at the start ---- */
   let state: EchoState = ECHO_START;
+  check(echoTiles(morse, state).every((t) => t === 'todo'), `${phrase}: something was shown at the start`);
+  check(echoProgress(morse, state) === 0, `${phrase}: progress should start at zero`);
+  check(!echoComplete(morse, state), `${phrase}: should not start complete`);
   assertNoLeak(state, 'start');
-  check(echoTiles(morse, state)[0] === 'listening', `${phrase}: first tile should await listening`);
 
-  codes.forEach((code, letterIndex) => {
-    // Tapping before listening must be refused.
-    const before = echoTap(morse, state, code[0] as Symbol);
-    check(before === state, `${phrase}: tapping was allowed before listening`);
-    check(echoTiles(morse, state)[letterIndex] === 'listening',
-      `${phrase}: the current letter should be awaiting a listen at ${letterIndex}`);
+  /* ---- you can start anywhere, not just at the beginning ---- */
+  if (codes.length >= 3) {
+    const third = 2;
+    let jump = echoSelect(morse, ECHO_START, third);
+    check(jump.current === third, `${phrase}: could not jump straight to letter 3`);
+    check(echoTiles(morse, jump)[third] === 'current', `${phrase}: letter 3 not marked current`);
+    check(echoTiles(morse, jump)[0] === 'todo', `${phrase}: jumping ahead disturbed letter 1`);
 
-    state = echoHear(state);
-    check(echoTiles(morse, state)[letterIndex] === 'tapping',
-      `${phrase}: should be ready to tap after listening at ${letterIndex}`);
-    check(echoTiles(morse, state)[letterIndex] !== 'revealed',
-      `${phrase}: letter shown merely for listening at ${letterIndex}`);
-    assertNoLeak(state, `heard ${letterIndex}`);
-
-    code.split('').forEach((symbol, symbolIndex) => {
-      state = echoTap(morse, state, symbol as Symbol);
-      const finished = symbolIndex === code.length - 1;
-      check(state.index === letterIndex + (finished ? 1 : 0),
-        `${phrase}: index wrong at letter ${letterIndex} symbol ${symbolIndex}`);
-      assertNoLeak(state, `tapped ${letterIndex}.${symbolIndex}`);
+    // and solve just that one
+    jump = echoHear(jump);
+    codes[third].split('').forEach((symbol) => {
+      jump = echoTap(morse, jump, symbol as Symbol);
     });
+    check(jump.solved.includes(third), `${phrase}: letter 3 was not solved`);
+    check(echoTiles(morse, jump)[third] === 'solved', `${phrase}: letter 3 not shown solved`);
+    check(!echoComplete(morse, jump), `${phrase}: one letter should not complete the message`);
+    check(echoProgress(morse, jump) === 1, `${phrase}: progress should be 1`);
+    assertNoLeak(jump, 'after jumping to letter 3');
+  }
 
-    check(echoTargetCode(morse, state) === (codes[letterIndex + 1] ?? ''),
-      `${phrase}: target did not advance after letter ${letterIndex}`);
-  });
+  /* ---- tapping without hearing is refused ---- */
+  {
+    const selected = echoSelect(morse, ECHO_START, 0);
+    const early = echoTap(morse, selected, codes[0][0] as Symbol);
+    check(early === selected, `${phrase}: tapping was allowed before listening`);
+  }
 
-  check(echoComplete(morse, state), `${phrase}: perfect run did not complete`);
-  check(echoClean(morse, state), `${phrase}: perfect run was not clean`);
-  check(state.misses === 0 && state.given === 0, `${phrase}: perfect run recorded penalties`);
+  /* ---- solving in a scrambled order still completes ---- */
+  {
+    const order = codes.map((_, index) => index).sort(() => Math.random() - 0.5);
+    let scrambled: EchoState = ECHO_START;
+    for (const index of order) {
+      scrambled = echoSelect(morse, scrambled, index);
+      check(scrambled.current === index, `${phrase}: could not select letter ${index}`);
+      scrambled = echoHear(scrambled);
+      codes[index].split('').forEach((symbol) => {
+        scrambled = echoTap(morse, scrambled, symbol as Symbol);
+      });
+      assertNoLeak(scrambled, `scrambled at ${index}`);
+    }
+    check(echoComplete(morse, scrambled), `${phrase}: scrambled order did not complete`);
+    check(echoClean(morse, scrambled), `${phrase}: a clean scrambled run was not clean`);
+    check(echoProgress(morse, scrambled) === codes.length, `${phrase}: progress wrong at the end`);
+  }
 
-  /* ---- a wrong tap must reset the letter, not advance it ---- */
-  let messy: EchoState = echoHear(ECHO_START);
-  const rightFirst = codes[0][0];
-  const wrongFirst: Symbol = rightFirst === '.' ? '-' : '.';
-  messy = echoTap(morse, messy, wrongFirst);
-  check(messy.index === 0, `${phrase}: a wrong tap advanced the letter`);
-  check(messy.tapped === '', `${phrase}: a wrong tap left rubbish behind`);
-  check(messy.misses === 1, `${phrase}: a wrong tap was not counted`);
-  check(messy.heard, `${phrase}: a wrong tap made you listen again`);
-  assertNoLeak(messy, 'after miss');
-
-  // and you can still finish from there
-  codes.forEach((code, letterIndex) => {
-    if (letterIndex > 0) messy = echoHear(messy);
-    code.split('').forEach((symbol) => {
-      messy = echoTap(morse, messy, symbol as Symbol);
+  /* ---- finishing one letter moves on to the next one still to do ---- */
+  if (codes.length >= 2) {
+    let flow = echoSelect(morse, ECHO_START, 0);
+    flow = echoHear(flow);
+    codes[0].split('').forEach((symbol) => {
+      flow = echoTap(morse, flow, symbol as Symbol);
     });
-  });
-  check(echoComplete(morse, messy), `${phrase}: could not finish after a miss`);
-  check(!echoClean(morse, messy), `${phrase}: a miss still counted as clean`);
+    check(flow.current === 1, `${phrase}: did not advance to the next letter, got ${flow.current}`);
+    check(!flow.heard, `${phrase}: the next letter should start unheard`);
+  }
 
-  /* ---- undo ---- */
-  let undoing: EchoState = echoHear(ECHO_START);
+  /* ---- a wrong tap resets that letter only ---- */
+  {
+    let messy = echoHear(echoSelect(morse, ECHO_START, 0));
+    const wrong: Symbol = codes[0][0] === '.' ? '-' : '.';
+    messy = echoTap(morse, messy, wrong);
+    check(messy.tapped === '', `${phrase}: a wrong tap left rubbish behind`);
+    check(messy.misses === 1, `${phrase}: a wrong tap was not counted`);
+    check(messy.current === 0, `${phrase}: a wrong tap moved the cursor`);
+    check(messy.heard, `${phrase}: a wrong tap forced another listen`);
+    check(!echoIsDone(messy, 0), `${phrase}: a wrong tap somehow solved it`);
+    assertNoLeak(messy, 'after a miss');
+  }
+
+  /* ---- undo steps back one symbol ---- */
   if (codes[0].length > 1) {
+    let undoing = echoHear(echoSelect(morse, ECHO_START, 0));
     undoing = echoTap(morse, undoing, codes[0][0] as Symbol);
     const stepped = echoUndo(undoing);
     check(stepped.tapped === '', `${phrase}: undo did not step back`);
-    check(stepped.index === 0, `${phrase}: undo moved the letter`);
+    check(stepped.current === 0, `${phrase}: undo moved the letter`);
+  }
+
+  /* ---- an already-solved letter can't be re-selected ---- */
+  {
+    let done = echoHear(echoSelect(morse, ECHO_START, 0));
+    codes[0].split('').forEach((symbol) => {
+      done = echoTap(morse, done, symbol as Symbol);
+    });
+    const reselect = echoSelect(morse, done, 0);
+    check(reselect.current === done.current, `${phrase}: a solved letter could be re-selected`);
   }
 
   /* ---- skipping every letter always terminates ---- */
-  let skipping: EchoState = ECHO_START;
-  let guard = 0;
-  while (!echoComplete(morse, skipping) && guard++ < 200) {
-    skipping = echoGiveLetter(morse, skipping);
+  {
+    let skipping: EchoState = echoSelect(morse, ECHO_START, 0);
+    let guard = 0;
+    while (!echoComplete(morse, skipping) && guard++ < 200) {
+      if (skipping.current < 0) break;
+      skipping = echoGiveLetter(morse, skipping);
+    }
+    check(echoComplete(morse, skipping), `${phrase}: skipping never completed`);
+    check(skipping.given.length === codes.length, `${phrase}: skip count wrong`);
+    check(!echoClean(morse, skipping), `${phrase}: all-skipped counted as clean`);
+    check(skipping.current === -1, `${phrase}: cursor should be idle once finished`);
   }
-  check(echoComplete(morse, skipping), `${phrase}: skipping never completed`);
-  check(skipping.given === codes.length, `${phrase}: skip count wrong`);
-  check(!echoClean(morse, skipping), `${phrase}: all-skipped counted as clean`);
 
   /* ---- giving up ---- */
-  const opened = echoOpenUp(ECHO_START);
-  check(echoComplete(morse, opened), `${phrase}: show-all did not complete`);
-  check(!echoClean(morse, opened), `${phrase}: show-all counted as clean`);
-  check(echoTiles(morse, opened).every((t) => t === 'revealed'),
-    `${phrase}: show-all left tiles hidden`);
+  {
+    const opened = echoOpenUp(ECHO_START);
+    check(echoComplete(morse, opened), `${phrase}: show-all did not complete`);
+    check(!echoClean(morse, opened), `${phrase}: show-all counted as clean`);
+    check(echoTiles(morse, opened).every((t) => t === 'given'), `${phrase}: show-all left tiles hidden`);
+  }
+
+  /* ---- nextUnsolved never points at something already done ---- */
+  {
+    let walking: EchoState = ECHO_START;
+    for (let i = 0; i < codes.length; i++) {
+      const index = nextUnsolved(morse, walking, 0);
+      check(index >= 0, `${phrase}: ran out of letters early`);
+      check(!echoIsDone(walking, index), `${phrase}: pointed at an already-done letter`);
+      walking = { ...walking, solved: [...walking.solved, index] };
+    }
+    check(nextUnsolved(morse, walking, 0) === -1, `${phrase}: should be nothing left`);
+  }
 }
 
-console.log(`decoded ${phrases.length} messages by ear, checking for leaks after every tap`);
+console.log(`decoded ${phrases.length} messages, in order and scrambled`);
 console.log(problems.length === 0
-  ? 'PASS: a letter is never shown before it is heard and tapped'
+  ? 'PASS: any letter, any order, and nothing is ever shown unearned'
   : `FAIL (${problems.length}):\n` + problems.slice(0, 6).join('\n'));
 process.exit(problems.length ? 1 : 0);

@@ -181,19 +181,22 @@ so you can follow along.
 The default. A message arrives **silent and blank** — no dots, no dashes, no letters, and it does
 not play on its own.
 
-For each letter in turn:
+The dots and dashes are visible from the start. What you have to earn is **the letter**.
 
-1. **Listen** — you hear that one letter
-2. Its **dots and dashes appear**
-3. You **tap that pattern back** on the key
-4. Only now does **the letter itself** appear
+1. **Tap any tile** — that letter sounds immediately
+2. **Tap the pattern back** on the key
+3. Only now does the letter appear, and the next one still to do sounds itself
+
+**Any letter, any order.** If you already know the first three, go straight to the fourth. Solved
+letters go green and can't be picked again.
 
 Hear it, see it, send it, then read it. Nothing is ever copied off the screen, because the letter
 doesn't exist on screen until you've already produced it.
 
-Tap a wrong symbol and the letter resets so you can listen again — it costs you a miss, not your
-progress. There's **Skip this letter** when one won't come, and **Show all** to give up. Finish
-without a single miss or skip and it reads *Decoded · perfect*.
+Tap a wrong symbol and that letter resets so you can hear it again — it costs you a miss, not your
+progress, and never touches the letters you've already got. There's **Give me this one** when a
+letter won't come, and **Show all** to give up. Finish with no misses and no help and it reads
+*Decoded · perfect*.
 
 While decoding, the key belongs to that message; the compose controls step aside and a banner says
 so. Matching is symbol by symbol, so there's no timing to get right while decoding — only dot

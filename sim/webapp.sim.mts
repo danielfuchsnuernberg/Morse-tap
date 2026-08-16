@@ -214,12 +214,23 @@ check(draft2.includes('-..') || draft2.includes('D'), `a dash then two dots shou
 /* ---- v019 behaviour ---- */
 check(!/playMessage\(id, symbols\);\n  render\(\);/.test(js),
   'sending must not replay the message back at you');
-check(js.includes('const code = token.code;'),
-  'the dots and dashes must be visible from the start');
+check(js.includes('<span class="code">${token.code}</span>'),
+  'the dots and dashes must be visible from the start, whatever the tile state');
+check(!js.includes("'···'"), 'the pattern must never be masked');
 check(js.includes("playMessage(message.id + ':echo', code)"),
   'the current letter must sound automatically');
-const decodeBlock = js.slice(js.indexOf('if (d.decode)'), js.indexOf('if (d.decode)') + 400);
+const decodeBlock = js.slice(js.indexOf('if (d.decode)'), js.indexOf('if (d.decode)') + 700);
 check(decodeBlock.includes('echoHear'), 'starting a decode must sound the first letter');
+check(decodeBlock.includes('nextUnsolved'), 'starting a decode must pick the first letter still to do');
+
+/* ---- v020: any letter, any order ---- */
+check(js.includes('data-pick='), 'every tile must be tappable');
+check(js.includes('if (d.pick)'), 'picking a tile must be handled');
+const pickBlock = js.slice(js.indexOf('if (d.pick)'), js.indexOf('if (d.pick)') + 600);
+check(pickBlock.includes('echoSelect'), 'picking a tile must select that letter');
+check(pickBlock.includes('echoHear'), 'picking a tile must sound it');
+check(js.includes('shown || done') && js.includes('disabled'),
+  'already-earned tiles must not be re-pickable');
 
 console.log('re-checked the four bugs seen on the phone, plus the v019 changes');
 console.log(problems.length === 0 ? 'PASS: layout, Send, key capture and ack fallback all correct' : `STILL BROKEN:\n${problems.slice(0,6).join('\n')}`);

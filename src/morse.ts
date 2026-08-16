@@ -604,25 +604,23 @@ export function compareToTarget(targetMorse: string, draftMorse: string): Target
 }
 
 /* ------------------------------------------------------------------ */
-/* Echo decoding - hear it, see it, tap it, learn it                   */
+/* Echo decoding - hear it, tap it, learn it                           */
 /* ------------------------------------------------------------------ */
 
 /**
- * Decoding a received message one letter at a time.
+ * Decoding a received message.
  *
- * Each letter goes through the same four steps:
- *   1. blank      - you know nothing about it yet
- *   2. heard      - you played it, so the dots and dashes appear
- *   3. tapped     - you reproduce the pattern on the key
- *   4. revealed   - only now does the letter itself appear
+ * The dots and dashes are visible from the start. What you have to earn
+ * is the letter: pick a tile, hear it, tap the pattern back, and only
+ * then does the letter appear.
  *
- * The letter is never shown before you've produced it, so there's
- * nothing to copy blindly.
+ * Letters can be taken in any order. If you already know the first
+ * three, go straight to the fourth.
  */
 export type EchoState = {
-  /** Which letter you're on. Equals the letter count when finished. */
-  index: number;
-  /** Have you listened to the current letter yet? */
+  /** The letter you're working on, or -1 if none is selected. */
+  current: number;
+  /** Have you heard the current letter? */
   heard: boolean;
   /** What you've tapped so far for the current letter. */
   tapped: string;
@@ -630,34 +628,73 @@ export type EchoState = {
   missed: boolean;
   /** How many times a letter had to be reset. */
   misses: number;
-  /** How many times you asked to be shown a letter. */
-  given: number;
+  /** Letters you tapped back correctly. */
+  solved: number[];
+  /** Letters you asked to be given. */
+  given: number[];
   /** Set if you gave up and revealed everything. */
   openedUp: boolean;
 };
 
 export const ECHO_START: EchoState = {
-  index: 0,
+  current: -1,
   heard: false,
   tapped: '',
   missed: false,
   misses: 0,
-  given: 0,
+  solved: [],
+  given: [],
   openedUp: false,
 };
 
-/** The dots and dashes of the letter currently being worked on. */
+/** How many letters the message has. */
+export function echoLetterCount(morse: string): number {
+  return splitLetters(morse).length;
+}
+
+/** True when that letter has been got, one way or another. */
+export function echoIsDone(state: EchoState, index: number): boolean {
+  return state.openedUp || state.solved.includes(index) || state.given.includes(index);
+}
+
+/** The dots and dashes of the letter being worked on. */
 export function echoTargetCode(morse: string, state: EchoState): string {
-  return splitLetters(morse)[state.index]?.code ?? '';
+  return splitLetters(morse)[state.current]?.code ?? '';
 }
 
-/** True once every letter has been heard, tapped and revealed. */
+/** True once every letter has been got. */
 export function echoComplete(morse: string, state: EchoState): boolean {
-  const total = splitLetters(morse).length;
-  return total > 0 && (state.openedUp || state.index >= total);
+  const total = echoLetterCount(morse);
+  if (total === 0) return false;
+  if (state.openedUp) return true;
+  for (let index = 0; index < total; index++) {
+    if (!echoIsDone(state, index)) return false;
+  }
+  return true;
 }
 
-/** Mark the current letter as heard, which reveals its pattern. */
+/**
+ * The next letter still to do, searching forwards from `from` and
+ * wrapping round. Returns -1 when everything is done.
+ */
+export function nextUnsolved(morse: string, state: EchoState, from = 0): number {
+  const total = echoLetterCount(morse);
+  for (let step = 0; step < total; step++) {
+    const index = (from + step) % total;
+    if (!echoIsDone(state, index)) return index;
+  }
+  return -1;
+}
+
+/** Choose which letter to work on. Any letter, any order. */
+export function echoSelect(morse: string, state: EchoState, index: number): EchoState {
+  const total = echoLetterCount(morse);
+  if (index < 0 || index >= total) return state;
+  if (echoIsDone(state, index)) return state;
+  return { ...state, current: index, heard: false, tapped: '', missed: false };
+}
+
+/** Mark the current letter as heard. */
 export function echoHear(state: EchoState): EchoState {
   return { ...state, heard: true, missed: false };
 }
@@ -665,16 +702,16 @@ export function echoHear(state: EchoState): EchoState {
 /**
  * Feed in one tapped symbol.
  *
- * Matching is done symbol by symbol against the target, so there's no
- * timing to get right while decoding - only dot versus dash. Get one
- * wrong and the letter resets so you can listen again and retry.
+ * Matching is symbol by symbol, so there's no timing to get right while
+ * decoding - only dot versus dash. Get one wrong and the letter resets.
  */
 export function echoTap(morse: string, state: EchoState, symbol: Symbol): EchoState {
-  if (echoComplete(morse, state)) return state;
-  // You have to hear a letter before you can tap it back.
+  if (state.current < 0 || echoComplete(morse, state)) return state;
   if (!state.heard) return state;
 
   const target = echoTargetCode(morse, state);
+  if (target.length === 0) return state;
+
   const attempt = state.tapped + symbol;
 
   if (!target.startsWith(attempt)) {
@@ -682,7 +719,11 @@ export function echoTap(morse: string, state: EchoState, symbol: Symbol): EchoSt
   }
 
   if (attempt === target) {
-    return { ...state, index: state.index + 1, heard: false, tapped: '', missed: false };
+    const solved = [...state.solved, state.current];
+    const next: EchoState = { ...state, solved, tapped: '', missed: false, heard: false };
+    // Move on to the next one still to do, wrapping past the end.
+    const following = nextUnsolved(morse, next, state.current + 1);
+    return { ...next, current: following };
   }
 
   return { ...state, tapped: attempt, missed: false };
@@ -694,46 +735,53 @@ export function echoUndo(state: EchoState): EchoState {
   return { ...state, tapped: state.tapped.slice(0, -1), missed: false };
 }
 
-/** Hand over the current letter and move on. Counts against you. */
+/** Hand over the current letter and move to the next one still to do. */
 export function echoGiveLetter(morse: string, state: EchoState): EchoState {
-  if (echoComplete(morse, state)) return state;
-  return {
-    ...state,
-    index: state.index + 1,
-    heard: false,
-    tapped: '',
-    missed: false,
-    given: state.given + 1,
-  };
+  if (state.current < 0 || echoComplete(morse, state)) return state;
+  const given = [...state.given, state.current];
+  const next: EchoState = { ...state, given, tapped: '', missed: false, heard: false };
+  return { ...next, current: nextUnsolved(morse, next, state.current + 1) };
 }
 
 /** Give up on the whole message. */
 export function echoOpenUp(state: EchoState): EchoState {
-  return { ...state, openedUp: true };
+  return { ...state, openedUp: true, current: -1 };
 }
 
 export type EchoTileState =
-  /** Already done - pattern and letter both shown. */
-  | 'revealed'
-  /** Current letter, not yet heard - nothing shown. */
-  | 'listening'
-  /** Current letter, heard - pattern shown, letter still hidden. */
-  | 'tapping'
-  /** Not reached yet. */
-  | 'locked';
+  /** Tapped back correctly. */
+  | 'solved'
+  /** Handed over rather than earned. */
+  | 'given'
+  /** The one you're working on. */
+  | 'current'
+  /** Not done yet, and not selected. */
+  | 'todo';
 
 /** What each tile should be showing right now. */
 export function echoTiles(morse: string, state: EchoState): EchoTileState[] {
   return splitLetters(morse).map((_, index) => {
-    if (state.openedUp || index < state.index) return 'revealed';
-    if (index > state.index) return 'locked';
-    return state.heard ? 'tapping' : 'listening';
+    if (state.openedUp) return 'given';
+    if (state.solved.includes(index)) return 'solved';
+    if (state.given.includes(index)) return 'given';
+    return index === state.current ? 'current' : 'todo';
   });
 }
 
-/** True when the whole message was done without a single miss or hint. */
+/** How many letters are done. */
+export function echoProgress(morse: string, state: EchoState): number {
+  if (state.openedUp) return echoLetterCount(morse);
+  return state.solved.length + state.given.length;
+}
+
+/** True when the whole message was done with no misses and no help. */
 export function echoClean(morse: string, state: EchoState): boolean {
-  return echoComplete(morse, state) && state.misses === 0 && state.given === 0 && !state.openedUp;
+  return (
+    echoComplete(morse, state) &&
+    state.misses === 0 &&
+    state.given.length === 0 &&
+    !state.openedUp
+  );
 }
 
 /* ------------------------------------------------------------------ */

@@ -81,14 +81,19 @@ h1{font-size:18px;font-weight:800;letter-spacing:3px;margin:0}
 .tile.wordbreak{margin-left:14px}
 .tile.active{background:var(--accent);border-color:var(--accent)}
 .tile.active .code,.tile.active .char{color:#000}
-.tile.revealed,.tile.done{border-color:var(--good)}
+.tile.solved{border-color:var(--good)}
+.tile.given{border-color:var(--dim);border-style:dashed}
+.tile.shown .code{color:var(--dim)}
+.tile:not(.shown) .code{color:var(--accent)}
+.tile[disabled]{cursor:default}
+.tile.done{border-color:var(--good)}
 .tile.done{background:var(--good)}
 .tile.done .char,.tile.done .code{color:#000}
 .tile.current{border-color:var(--accent);border-width:2px}
 .tile.missed{border-color:var(--bad);border-width:2px}
 .tile .code{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:1px;color:var(--dim)}
 .tile .char{font-size:16px;font-weight:700}
-.tile.revealed .code{color:var(--accent)}
+
 
 .plain{font-size:17px;font-weight:700;letter-spacing:.5px}
 .instruction{font-size:13px;font-weight:600}

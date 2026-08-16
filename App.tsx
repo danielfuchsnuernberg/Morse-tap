@@ -7,10 +7,12 @@ import {
   splitLetters,
   echoHear,
   echoTap,
+  echoSelect,
   echoGiveLetter,
   echoOpenUp,
   echoTargetCode,
   echoComplete,
+  nextUnsolved,
   type PuzzleState,
   type Symbol,
 } from './src/morse';
@@ -264,7 +266,7 @@ export default function App() {
           if (message.id !== decodingId) return message;
           const next = echoTap(message.symbols, message.echo, symbol);
           // Finished that letter? Line up the next one and sound it.
-          if (next.index > message.echo.index && !echoComplete(message.symbols, next)) {
+          if (next.solved.length > message.echo.solved.length && !echoComplete(message.symbols, next)) {
             const code = echoTargetCode(message.symbols, next);
             if (code) advancedTo = { id: message.id, code };
             return { ...message, echo: echoHear(next) };
@@ -281,19 +283,36 @@ export default function App() {
     [decodingId, play, timing]
   );
 
-  /** Starting a decode plays the first letter straight away. */
+  /** Starting a decode selects the first letter and sounds it. */
   const startDecode = useCallback(
     (id: string) => {
       setDecodingId(id);
       const message = messages.find((item) => item.id === id);
       if (!message) return;
-      const code = echoTargetCode(message.symbols, message.echo);
+      const selected =
+        message.echo.current >= 0
+          ? message.echo
+          : echoSelect(message.symbols, message.echo, nextUnsolved(message.symbols, message.echo));
+      const code = echoTargetCode(message.symbols, selected);
       if (code) {
-        patchEcho(id, echoHear);
+        patchEcho(id, () => echoHear(selected));
         play(`${id}:echo`, code, timing);
       }
     },
     [messages, patchEcho, play, timing]
+  );
+
+  /** Pick any letter to work on, and hear it straight away. */
+  const handleEchoSelect = useCallback(
+    (message: Message, index: number) => {
+      const selected = echoSelect(message.symbols, message.echo, index);
+      if (selected === message.echo) return;
+      setDecodingId(message.id);
+      patchEcho(message.id, () => echoHear(selected));
+      const code = echoTargetCode(message.symbols, selected);
+      if (code) play(`${message.id}:echo`, code, timing);
+    },
+    [patchEcho, play, timing]
   );
 
   // Hand the key back automatically once a message is fully decoded.
@@ -372,6 +391,7 @@ export default function App() {
           onStopDecode={() => setDecodingId(null)}
           onDecodeSymbol={handleDecodeSymbol}
           onEchoListen={handleEchoListen}
+          onEchoSelect={handleEchoSelect}
           onEchoGiveLetter={(id) =>
             setMessages((current) =>
               current.map((m) => (m.id === id ? { ...m, echo: echoGiveLetter(m.symbols, m.echo) } : m))

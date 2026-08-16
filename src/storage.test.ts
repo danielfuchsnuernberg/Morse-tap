@@ -109,12 +109,12 @@ test('no messages stored gives an empty log', () => {
 
 test('a stored message round-trips with its decoding progress', () => {
   const saved = [
-    message({ id: 'm4', echo: { ...ECHO_START, index: 2, misses: 1 } }),
+    message({ id: 'm4', echo: { ...ECHO_START, solved: [0, 1], misses: 1 } }),
   ];
   const parsed = parseMessages(JSON.stringify(saved));
   assert.equal(parsed.length, 1);
   assert.equal(parsed[0].id, 'm4');
-  assert.equal(parsed[0].echo.index, 2, 'half-finished decoding should survive a restart');
+  assert.deepEqual(parsed[0].echo.solved, [0, 1], 'half-finished decoding should survive a restart');
   assert.equal(parsed[0].echo.misses, 1);
 });
 
