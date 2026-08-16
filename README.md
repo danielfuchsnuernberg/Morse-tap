@@ -1,4 +1,4 @@
-# Morse Tap — v002
+# Morse Tap — v013
 
 Send morse code to another person, in real time, from your iPhone. Tap a key, watch it turn into
 dots and dashes, hit send. Your partner's phone beeps it out.
@@ -11,10 +11,16 @@ Built with Expo, so **you do not need a Mac** to run it on a real iPhone.
 |---|---|
 | `App.tsx` | Tab shell and app state |
 | `src/morse.ts` | All morse logic — encode, decode, tap timing, playback |
-| `src/morse.test.ts` | 35 unit tests for the above |
+| `src/morse.test.ts` | 109 unit tests for the above |
+| `sim/` | Ten end-to-end simulations of real usage |
 | `src/useRelay.ts` | WebSocket connection with auto-reconnect |
 | `src/useTone.ts` | The beep and the flashing key |
-| `src/components/MessageReader.tsx` | Letter tiles, synced highlight, decode puzzle |
+| `src/components/MorseKey.tsx` | The key, with live dot/dash feedback |
+| `src/components/GuideStrip.tsx` | Type a message, see the morse, tap along |
+| `src/storage.ts` | Saving settings, room and messages on the phone |
+| `src/components/ConnectionBar.tsx` | Header status chip and the room controls |
+| `src/components/EchoReader.tsx` | Decode a received message by ear, letter by letter |
+| `src/components/MessageReader.tsx` | Letter tiles, synced highlight, decode puzzle, hints |
 | `src/screens/` | Key, Chart, Settings |
 | `server/` | The relay server that connects two phones |
 | `assets/tone.wav` | 600 Hz sine, generated to loop seamlessly |
@@ -57,7 +63,23 @@ cd server && npm install && npm start
 
 Then set the server URL to `ws://YOUR-COMPUTER-LOCAL-IP:8080` (both phones on the same WiFi).
 
+## What the app remembers
+
+Settings, your room code and your messages are kept on the phone. Reopen the app and it's where you
+left it, already rejoining the room you were in — no typing the code again.
+
+Half-finished decoding survives too. Get three letters into a message, close the app, come back, and
+you carry on from the fourth.
+
+The last 200 messages are kept. Settings has a button to delete them.
+
+**This is on-device only.** Messages are not stored on the server, so anything sent while your phone
+is closed is missed.
+
 ## How two people connect
+
+The connection status lives as a small dot beside the title. Tap it to open the room controls; tap
+again to fold them away, so they cost screen space only while you're using them.
 
 There are no accounts. Both people type the **same room code** — any 3-12 letters or numbers, like
 `BANANA7` — and press Join. Anyone with that code can join, so pick something not obvious.
@@ -72,35 +94,129 @@ so you can follow along.
 - Incoming messages play automatically the moment they land
 - Tap **Listen** on any message to replay it; tap again to stop
 
-Messages you receive arrive **undecoded**. You see the dots and dashes for each letter and hear the
-tone, and you type what you think it says. Letters you get right lock in green as you type; wrong
-ones show in red so you know where you slipped. The Chart tab is one tap away if you get stuck, and
-there's a **Reveal** button when you've had enough.
+## Decoding by ear
+
+The default. A message arrives **silent and blank** — no dots, no dashes, no letters, and it does
+not play on its own.
+
+For each letter in turn:
+
+1. **Listen** — you hear that one letter
+2. Its **dots and dashes appear**
+3. You **tap that pattern back** on the key
+4. Only now does **the letter itself** appear
+
+Hear it, see it, send it, then read it. Nothing is ever copied off the screen, because the letter
+doesn't exist on screen until you've already produced it.
+
+Tap a wrong symbol and the letter resets so you can listen again — it costs you a miss, not your
+progress. There's **Skip this letter** when one won't come, and **Show all** to give up. Finish
+without a single miss or skip and it reads *Decoded · perfect*.
+
+While decoding, the key belongs to that message; the compose controls step aside and a banner says
+so. Matching is symbol by symbol, so there's no timing to get right while decoding — only dot
+versus dash.
+
+Switch to **By typing** in Settings for the older, quicker style below.
+
+## Decoding by typing
+
+Messages you receive arrive **fully coded**. Nothing is filled in for you — just the dots and
+dashes and the sound. You type what you think it says; correct letters lock in green, wrong ones
+show red so you know where you slipped.
+
+When you're stuck, four things help, all opt-in:
+
+- **Tap a tile** to hear that one letter on its own — no replaying the whole message
+- **Hold a tile** to reveal that specific letter
+- **Slow** replays the message at half speed
+- **Give me a letter** reveals the next letter you haven't got
+
+Anything that hands you a letter counts as a hint, and the count is shown on the message. Finish
+without any and it reads **Solved · no hints**. There's no difficulty setting — you set the
+difficulty by how much help you take.
+
+**Show all** gives up and reveals everything.
 
 Your own sent messages are always shown in plain text — the puzzle is only for incoming.
 
 ## How to actually send morse
 
-- **Short press** = dot
-- **Long press** (hold ~3× as long) = dash
-- **Pause** between letters, **longer pause** between words
-- The Chart tab lists every letter and number. Tap any row to hear it.
-- Start at 5 words per minute in Settings. It's slow on purpose.
+You don't need to count or guess. The key tells you what it's doing while you hold it:
 
-The app shows the decoded English under your dots and dashes as you tap, so you always know whether
-you got it right before you send.
+- **Hold it.** A dot appears, and a bar creeps across the key.
+- **When the bar fills, the dot becomes a DASH** and the key turns orange. Let go at whichever one
+  you wanted.
+- **After you release**, a thin line under the key drains away. Tap again before it empties and
+  you're still in the same letter. Let it drain and the next tap starts a new letter.
+- **For a new word, press Space.** Pauses never start a word — only that button does. Take as long
+  as you like between letters without splitting your message.
+
+Speeds are set with a stepper rather than a handful of presets: Beginner runs 3–20 wpm in fine
+steps at the slow end, Farnsworth character speed 8–25, and overall pace right down to 2 wpm. Slower
+means longer gaps, which is the cure for letters running together.
+
+At the default 5 words per minute a dash needs about half a second. Slower than feels natural, which
+is why the key shows you rather than making you count.
+
+The decoded English appears under your dots and dashes as you tap, so you always know whether you
+got it right before you send. The Chart tab lists every letter and number — tap any row to hear it.
+
+## Two modes
+
+Switch in Settings.
+
+**Beginner** — everything at one slow speed, and a **Space** button separates words. Pauses never
+split a word, so you can take as long as you like between letters. This is not real morse; it's
+training wheels, and there's no shame in it.
+
+**Farnsworth** — how morse actually works, and how it has been taught for decades. Each letter is
+sent at full speed (18 wpm by default) so it sounds like real morse, but the silences between
+letters are stretched to give you thinking time. There is no Space button: a long enough pause
+starts a new word, exactly as on a real telegraph key.
+
+Why letters at full speed? Learning them slowly teaches you to *count* dots, and that becomes a wall
+around 10 wpm that's genuinely hard to break through. Farnsworth avoids it by making you learn each
+letter's sound shape from the first day.
+
+The key shows a second countdown bar in Farnsworth mode, so you can see the word gap approaching
+rather than guessing at it.
+
+## The guide
+
+Above the key there's a **Guide** panel. Type what you want to say — `I LOVE YOU` — and it lays out
+the morse for every letter, in order, right where you can see it while tapping.
+
+**It never sends anything.** The only thing that gets sent is what you actually tapped on the key.
+The guide is a crib sheet, not a shortcut.
+
+As you tap, each letter turns green when you get it. The panel tells you which letter is next and
+what it looks like, so you never leave the Key tab. Tap any guide letter to hear it. Go wrong and it
+says so immediately — hit Undo and carry on.
+
+Collapse it when you don't need it.
+
+## Fixing mistakes
+
+- **Tap Undo** — removes one dot or dash
+- **Hold Undo** — removes the whole last letter, however many symbols it had
+- **Space** — ends the current word. Tapping it twice does nothing extra, and Undo removes it.
+
+A wrong letter three symbols deep shouldn't take three taps to clear. Hold Undo once and the guide
+puts you straight back on track.
 
 ## Tests
 
 ```bash
-npm test           # 56 morse logic tests
+npm test            # 182 logic tests
 npm run typecheck  # TypeScript, strict mode
 npm run test:server # 11 live server tests (boots the real server)
 ```
 
-## Not in v001
+## Not in v013
 
-- Message history (messages vanish when you close the app)
+- Messages arriving while your phone is closed (nothing is stored on the server)
+- End-to-end encryption (the relay sees messages in plain text)
 - Push notifications when the app is closed
 - App Store build — that needs an Apple Developer account ($99/yr) and `eas build`
 

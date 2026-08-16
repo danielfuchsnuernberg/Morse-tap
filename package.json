@@ -1,8 +1,9 @@
 {
   "name": "morse-tap",
-  "version": "0.0.2",
+  "version": "0.0.13",
   "main": "index.ts",
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "~57.0.13",
     "expo-audio": "^57.0.3",
     "expo-haptics": "^57.0.1",
@@ -22,9 +23,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsx --test src/morse.test.ts",
+    "test": "tsx --test src/morse.test.ts src/settings.test.ts src/storage.test.ts",
     "typecheck": "tsc --noEmit",
-    "test:server": "cd server && npm test"
+    "test:server": "cd server && npm test",
+    "test:sim": "for f in sim/*.sim.ts; do echo \"--- $f\"; tsx $f || exit 1; done"
   },
   "private": true
 }

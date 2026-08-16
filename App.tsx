@@ -1,15 +1,41 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { theme } from './src/theme';
-import { unitMsForWpm } from './src/morse';
+import {
+  nextHintIndex,
+  splitLetters,
+  echoHear,
+  echoTap,
+  echoGiveLetter,
+  echoOpenUp,
+  echoTargetCode,
+  echoComplete,
+  type PuzzleState,
+  type Symbol,
+} from './src/morse';
+import {
+  DEFAULT_PREFS,
+  timingFor,
+  usesSpaceButton,
+  allowsTimedWordBreak,
+  usesEchoDecoding,
+  type Prefs,
+} from './src/settings';
 import { useRelay, type Incoming } from './src/useRelay';
 import { useTone } from './src/useTone';
-import KeyScreen, { type Message } from './src/screens/KeyScreen';
+import KeyScreen, { newMessage, type Message } from './src/screens/KeyScreen';
+import ConnectionBar, { ConnectionChip } from './src/components/ConnectionBar';
+import {
+  loadAll,
+  savePrefs,
+  saveSession,
+  saveMessages,
+  clearMessages,
+  highestIdNumber,
+} from './src/storage';
 import ChartScreen from './src/screens/ChartScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
-
-const DEFAULT_SERVER = 'wss://morse-tap-server.onrender.com';
 
 type Tab = 'key' | 'chart' | 'settings';
 const TABS: { id: Tab; label: string }[] = [
@@ -17,6 +43,13 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'chart', label: 'Chart' },
   { id: 'settings', label: 'Settings' },
 ];
+
+/** Half speed, for the Slow replay button. */
+const slowed = (timing: ReturnType<typeof timingFor>) => ({
+  charUnitMs: timing.charUnitMs * 2,
+  letterGapMs: timing.letterGapMs * 2,
+  wordGapMs: timing.wordGapMs * 2,
+});
 
 let messageCounter = 0;
 const nextId = () => `m${++messageCounter}`;
@@ -26,37 +59,62 @@ export default function App() {
   const [room, setRoom] = useState('');
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [decodingId, setDecodingId] = useState<string | null>(null);
+  const [roomOpen, setRoomOpen] = useState(false);
+  /** Nothing is written back to disk until the first read has finished. */
+  const [restored, setRestored] = useState(false);
 
-  const [wpm, setWpm] = useState(5);
-  const [soundOn, setSoundOn] = useState(true);
-  const [hapticsOn, setHapticsOn] = useState(true);
-  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER);
+  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
 
-  const unitMs = unitMsForWpm(wpm);
-  const { toneOn, toneOff, play, stop, playback, lit } = useTone(soundOn, hapticsOn);
+  // Restore everything from the last session.
+  useEffect(() => {
+    let cancelled = false;
+    loadAll().then(({ prefs: savedPrefs, session, messages: savedMessages }) => {
+      if (cancelled) return;
+      setPrefs(savedPrefs);
+      setMessages(savedMessages);
+      messageCounter = highestIdNumber(savedMessages);
+      if (session.room.length > 0) setRoom(session.room);
+      if (session.autoJoin) setConnected(true);
+      setRestored(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Save whenever something changes, but never before the restore lands.
+  useEffect(() => {
+    if (restored) savePrefs(prefs);
+  }, [prefs, restored]);
+
+  useEffect(() => {
+    if (restored) saveSession({ room, autoJoin: connected && room.length >= 3 });
+  }, [room, connected, restored]);
+
+  useEffect(() => {
+    if (restored) saveMessages(messages);
+  }, [messages, restored]);
+
+  const timing = timingFor(prefs);
+  const { toneOn, toneOff, play, stop, playback } = useTone(prefs.soundOn, prefs.hapticsOn);
 
   const handleIncoming = useCallback(
     (incoming: Incoming) => {
       const id = nextId();
       setMessages((current) => [
         ...current,
-        {
-          id,
-          mine: false,
-          symbols: incoming.symbols,
-          at: incoming.sentAt,
-          guess: '',
-          revealed: false,
-        },
+        newMessage(id, false, incoming.symbols, incoming.sentAt),
       ]);
-      // Play it straight away so the highlight runs while it arrives.
-      play(id, incoming.symbols, unitMs);
+      // In echo mode the message must NOT play on arrival - hearing it
+      // whole before decoding defeats the letter-by-letter exercise.
+      if (!usesEchoDecoding(prefs)) play(id, incoming.symbols, timing);
     },
-    [play, unitMs]
+    [play, timing, prefs]
   );
 
   const { status, peers, lastError, sendMorse } = useRelay({
-    url: serverUrl,
+    url: prefs.serverUrl,
     room,
     enabled: connected,
     onMorse: handleIncoming,
@@ -66,39 +124,124 @@ export default function App() {
     (symbols: string) => {
       sendMorse(symbols);
       const id = nextId();
-      setMessages((current) => [
-        ...current,
-        { id, mine: true, symbols, at: Date.now(), guess: '', revealed: true },
-      ]);
+      setMessages((current) => [...current, newMessage(id, true, symbols, Date.now())]);
       // Hear back what you just sent, highlighted letter by letter.
-      play(id, symbols, unitMs);
+      play(id, symbols, timing);
     },
-    [sendMorse, play, unitMs]
+    [sendMorse, play, timing]
   );
 
   const handleTogglePlay = useCallback(
-    (message: Message) => play(message.id, message.symbols, unitMs),
-    [play, unitMs]
+    (message: Message, slow: boolean) =>
+      play(message.id, message.symbols, slow ? slowed(timing) : timing),
+    [play, timing]
   );
 
-  const handleGuessChange = useCallback((id: string, guess: string) => {
+  /** Hear one letter on its own, without replaying the whole message. */
+  const handlePlayLetter = useCallback(
+    (message: Message, index: number) => {
+      const token = splitLetters(message.symbols)[index];
+      if (token) play(`${message.id}:${index}`, token.code, timing);
+    },
+    [play, timing]
+  );
+
+  /** Update just one message's puzzle state. */
+  const patchPuzzle = useCallback((id: string, change: (p: PuzzleState) => PuzzleState) => {
     setMessages((current) =>
-      current.map((message) => (message.id === id ? { ...message, guess } : message))
+      current.map((message) =>
+        message.id === id ? { ...message, puzzle: change(message.puzzle) } : message
+      )
     );
   }, []);
 
-  const handleReveal = useCallback((id: string) => {
+  const handleGuessChange = useCallback(
+    (id: string, guess: string) => patchPuzzle(id, (puzzle) => ({ ...puzzle, guess })),
+    [patchPuzzle]
+  );
+
+  /** Hand over one specific letter. */
+  const giveLetter = useCallback(
+    (id: string, index: number) =>
+      patchPuzzle(id, (puzzle) =>
+        index < 0 || puzzle.given.includes(index)
+          ? puzzle
+          : { ...puzzle, given: [...puzzle.given, index] }
+      ),
+    [patchPuzzle]
+  );
+
+  /** Hand over the next letter they haven't got yet. */
+  const handleHint = useCallback(
+    (id: string) => {
+      const message = messages.find((item) => item.id === id);
+      if (!message) return;
+      giveLetter(id, nextHintIndex(message.symbols, message.puzzle));
+    },
+    [messages, giveLetter]
+  );
+
+  const handleOpenUp = useCallback(
+    (id: string) => patchPuzzle(id, (puzzle) => ({ ...puzzle, openedUp: true })),
+    [patchPuzzle]
+  );
+
+  /* ---- decoding by ear ---- */
+
+  const patchEcho = useCallback((id: string, change: (e: Message['echo']) => Message['echo']) => {
     setMessages((current) =>
-      current.map((message) => (message.id === id ? { ...message, revealed: true } : message))
+      current.map((message) =>
+        message.id === id ? { ...message, echo: change(message.echo) } : message
+      )
     );
   }, []);
+
+  /** Play just the letter being worked on, and mark it heard. */
+  const handleEchoListen = useCallback(
+    (message: Message) => {
+      const code = echoTargetCode(message.symbols, message.echo);
+      if (code.length === 0) return;
+      play(`${message.id}:echo`, code, timing);
+      patchEcho(message.id, echoHear);
+    },
+    [play, timing, patchEcho]
+  );
+
+  const handleDecodeSymbol = useCallback(
+    (symbol: Symbol) => {
+      if (!decodingId) return;
+      setMessages((current) =>
+        current.map((message) => {
+          if (message.id !== decodingId) return message;
+          const next = echoTap(message.symbols, message.echo, symbol);
+          return { ...message, echo: next };
+        })
+      );
+    },
+    [decodingId]
+  );
+
+  // Hand the key back automatically once a message is fully decoded.
+  useEffect(() => {
+    if (!decodingId) return;
+    const message = messages.find((item) => item.id === decodingId);
+    if (message && echoComplete(message.symbols, message.echo)) setDecodingId(null);
+  }, [messages, decodingId]);
 
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar style="light" />
 
       <View style={styles.header}>
-        <Text style={styles.title}>MORSE TAP</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>MORSE TAP</Text>
+          <ConnectionChip
+            status={status}
+            peers={peers}
+            room={room}
+            onPress={() => setRoomOpen((open) => !open)}
+          />
+        </View>
         <View style={styles.tabs}>
           {TABS.map((item) => (
             <TouchableOpacity
@@ -117,47 +260,69 @@ export default function App() {
         </View>
       </View>
 
+      <ConnectionBar
+        room={room}
+        onRoomChange={setRoom}
+        connected={connected}
+        onToggleConnect={() => setConnected((value) => !value)}
+        status={status}
+        peers={peers}
+        lastError={lastError}
+        open={roomOpen}
+        onToggleOpen={() => setRoomOpen(false)}
+      />
+
       {tab === 'key' ? (
         <KeyScreen
-          room={room}
-          onRoomChange={setRoom}
-          connected={connected}
-          onToggleConnect={() => setConnected((value) => !value)}
-          status={status}
-          peers={peers}
-          lastError={lastError}
-          unitMs={unitMs}
+          timing={timing}
+          showSpaceButton={usesSpaceButton(prefs)}
+          allowTimedWordBreak={allowsTimedWordBreak(prefs)}
           messages={messages}
-          lit={lit}
           playingId={playback.messageId}
           activeLetter={playback.letterIndex}
           onKeyDown={toneOn}
           onKeyUp={toneOff}
           onSend={handleSend}
-          onPreview={(symbols) => play('draft', symbols, unitMs)}
+          onPreview={(symbols) => play('draft', symbols, timing)}
+          onPlayCode={(code) => play(`guide:${code}`, code, timing)}
           onTogglePlay={handleTogglePlay}
+          onPlayLetter={handlePlayLetter}
           onGuessChange={handleGuessChange}
-          onReveal={handleReveal}
+          onHint={handleHint}
+          onHintAt={giveLetter}
+          onOpenUp={handleOpenUp}
+          echoMode={usesEchoDecoding(prefs)}
+          decodingId={decodingId}
+          onStartDecode={setDecodingId}
+          onStopDecode={() => setDecodingId(null)}
+          onDecodeSymbol={handleDecodeSymbol}
+          onEchoListen={handleEchoListen}
+          onEchoGiveLetter={(id) =>
+            setMessages((current) =>
+              current.map((m) => (m.id === id ? { ...m, echo: echoGiveLetter(m.symbols, m.echo) } : m))
+            )
+          }
+          onEchoOpenUp={(id) => patchEcho(id, echoOpenUp)}
         />
       ) : null}
 
       {tab === 'chart' ? (
         <ChartScreen
           playingCode={playback.messageId?.startsWith('chart:') ? playback.messageId.slice(6) : null}
-          onPlay={(code) => play(`chart:${code}`, code, unitMs)}
+          onPlay={(code) => play(`chart:${code}`, code, timing)}
         />
       ) : null}
 
       {tab === 'settings' ? (
         <SettingsScreen
-          wpm={wpm}
-          onWpmChange={setWpm}
-          soundOn={soundOn}
-          onSoundChange={setSoundOn}
-          hapticsOn={hapticsOn}
-          onHapticsChange={setHapticsOn}
-          serverUrl={serverUrl}
-          onServerUrlChange={setServerUrl}
+          prefs={prefs}
+          onChange={setPrefs}
+          messageCount={messages.length}
+          onClearHistory={() => {
+            setMessages([]);
+            setDecodingId(null);
+            clearMessages();
+          }}
         />
       ) : null}
     </SafeAreaView>
@@ -166,8 +331,9 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
-  header: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
-  title: { color: theme.text, fontSize: 20, fontWeight: '800', letterSpacing: 4 },
+  header: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  title: { color: theme.text, fontSize: 18, fontWeight: '800', letterSpacing: 3 },
   tabs: {
     flexDirection: 'row',
     backgroundColor: theme.surface,
