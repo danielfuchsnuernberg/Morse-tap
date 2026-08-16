@@ -175,6 +175,11 @@ allowed to reconnect when it closes. Without that, retiring a dead socket leaves
 connection of its own — and you end up sitting in the room twice, receiving your own messages. See
 `sim/reconnect.sim.mts`, which reproduces exactly that.
 
+One more trap worth knowing about: `self` is a real global in a browser, so `self.onmessage = ...`
+compiles cleanly and quietly attaches the handler to the global object instead of your socket. The
+connection then opens, hears nothing ever, and reports itself disconnected. `sim/globals.sim.mts`
+scans every source file for that, and bans naming a local variable `self` at all.
+
 ## How two people connect
 
 The connection status lives as a small dot beside the title. Tap it to open the room controls; tap

@@ -94,14 +94,28 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
       }
       socketRef.current = socket;
 
-      socket.onopen = () => {
+      // Hold this attempt's socket in a local, so every handler below is
+      // bound to THIS socket and not to whatever is current later on.
+      const link = socket;
+
+      link.onopen = () => {
+        // A stale socket that finally opens must not join the room.
+        if (!isCurrent()) {
+          try {
+            link.close();
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
         attemptsRef.current = 0;
+        lastHeardRef.current = Date.now();
         setStatus('connected');
         setLastError(null);
-        socket?.send(JSON.stringify({ type: 'join', room }));
+        link.send(JSON.stringify({ type: 'join', room }));
       };
 
-      self.onmessage = (event) => {
+      link.onmessage = (event) => {
         if (!isCurrent()) return;
         lastHeardRef.current = Date.now();
         let message: any;
@@ -127,11 +141,11 @@ export function useRelay({ url, room, enabled, onMorse, onAck, onReady }: Option
         }
       };
 
-      self.onerror = () => {
+      link.onerror = () => {
         if (isCurrent()) setLastError('Cannot reach server');
       };
 
-      self.onclose = () => {
+      link.onclose = () => {
         // An old socket closing is expected and must change nothing.
         if (!isCurrent()) return;
         socketRef.current = null;

@@ -534,7 +534,7 @@ function settingsHtml() {
       }</button>
     </div>
 
-    <div class="version">Morse Tap · web · v023</div>`;
+    <div class="version">Morse Tap · web · v024</div>`;
 }
 
 function render() {

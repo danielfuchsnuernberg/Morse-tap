@@ -38,20 +38,20 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
     const mine = generation;
     const isCurrent = () => mine === generation;
 
-    let self;
+    let link;
     try {
-      self = new WebSocket(url);
+      link = new WebSocket(url);
     } catch {
       onStatus('error', 0);
       return;
     }
-    socket = self;
+    socket = link;
 
-    self.onopen = () => {
+    link.onopen = () => {
       // A stale socket that finally opens must not join the room.
       if (!isCurrent()) {
         try {
-          self.close();
+          link.close();
         } catch {
           /* ignore */
         }
@@ -60,10 +60,10 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
       attempts = 0;
       lastHeard = Date.now();
       onStatus('connected', 0);
-      self.send(JSON.stringify({ type: 'join', room }));
+      link.send(JSON.stringify({ type: 'join', room }));
     };
 
-    self.onmessage = (event) => {
+    link.onmessage = (event) => {
       if (!isCurrent()) return;
       lastHeard = Date.now();
       let message;
@@ -82,7 +82,7 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
       }
     };
 
-    self.onclose = () => {
+    link.onclose = () => {
       // An old socket closing is expected and must change nothing.
       if (!isCurrent()) return;
       socket = null;
@@ -95,7 +95,7 @@ export function createRelay({ onMorse, onStatus, onAck, onReady }) {
       retry = setTimeout(open, delay);
     };
 
-    self.onerror = () => undefined;
+    link.onerror = () => undefined;
   };
 
   /**
