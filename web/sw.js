@@ -2,7 +2,7 @@
  * Caches the app shell so it opens instantly and works with no signal.
  * Messages still need a connection, but the app itself always loads.
  */
-const CACHE = 'morse-chat-v029';
+const CACHE = 'morse-chat-v030';
 const SHELL = [
   './',
   './index.html',

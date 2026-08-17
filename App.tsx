@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import * as SplashScreen from 'expo-splash-screen';
 import { theme } from './src/theme';
 import {
   nextHintIndex,
@@ -69,6 +70,12 @@ export default function App() {
 }
 
 function MorseChat() {
+  // Insurance: the splash screen dismisses itself, but if anything ever
+  // holds it open the app would look like a blank screen with no clue.
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
+
   const [tab, setTab] = useState<Tab>('key');
   const [room, setRoom] = useState('');
   const [connected, setConnected] = useState(false);

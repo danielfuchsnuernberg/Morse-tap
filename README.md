@@ -165,8 +165,13 @@ Expo Go already has all of that configured, so a missing plugin entry is complet
 development and only breaks the release build — where iOS will terminate the app for touching an API
 with no usage string, giving you a black screen and no explanation.
 
-`expo-audio` is one of these. `sim/plugins.sim.mts` scans every dependency for an `app.plugin.js`
-and fails if it isn't declared in `app.json`, so this can't be forgotten again.
+Two of these bit this project. `expo-audio` needs a microphone usage string — iOS terminates an app
+that touches mic APIs without one. And `app.json` had a `splash` config while `expo-splash-screen`
+wasn't installed at all, so the real build got a launch screen with no module to dismiss it: a black
+screen that never goes away.
+
+`sim/plugins.sim.mts` now scans every dependency for an `app.plugin.js` and fails if it isn't
+declared, checks the microphone string exists, and refuses a splash config without its module.
 
 The app is also wrapped in an error boundary, because a release build otherwise renders **nothing**
 when it crashes. Now it shows the message and the stack on screen.

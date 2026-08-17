@@ -54,6 +54,14 @@ if (needsPlugin.includes('expo-audio')) {
     'expo-audio needs a microphone usage string - iOS terminates apps that touch mic APIs without one');
 }
 
+/* ---- a splash config needs the module that dismisses it ---- */
+const hasSplashPlugin = declared.includes('expo-splash-screen');
+const hasLegacySplash = appJson.splash !== undefined;
+check(!hasLegacySplash,
+  'the legacy top-level "splash" key is superseded by the expo-splash-screen plugin - having it without the module leaves a launch screen nothing can dismiss');
+check(hasSplashPlugin === existsSync('node_modules/expo-splash-screen'),
+  'expo-splash-screen must be both installed and declared, or neither');
+
 /* ---- the build number must move, or App Store Connect rejects it ---- */
 check(typeof appJson.ios?.buildNumber === 'string', 'ios.buildNumber must be set');
 check(appJson.version === pkg.version,
