@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import { Audio, Haptics, ToneAsset } from './native';
 import { buildScheduleWith, type Timing } from './morse';
 
-/**
- * Resolved once, at module load, so a failure here surfaces immediately
- * rather than halfway through a render.
- */
-const TONE_SOURCE = require('../assets/tone.wav');
+
 
 export type PlaybackState = {
   /** Which message is sounding right now, or null. */
@@ -29,21 +24,22 @@ const IDLE: PlaybackState = { messageId: null, letterIndex: -1 };
 export function useTone(soundOn: boolean, hapticsOn: boolean) {
   // A release build loads assets differently from Expo Go, so treat the
   // player as something that might not exist rather than assuming it.
-  const player = useAudioPlayer(TONE_SOURCE);
+  // No audio module means no beep - but the app still works.
+  const player = Audio ? Audio.useAudioPlayer(ToneAsset as never) : null;
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [playback, setPlayback] = useState<PlaybackState>(IDLE);
   const [lit, setLit] = useState(false);
 
   // Let the beep through even when the ringer switch is on silent.
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' }).catch(
+    Audio?.setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' }).catch(
       () => undefined
     );
   }, []);
 
   useEffect(() => {
     try {
-      player.loop = true;
+      if (player) player.loop = true;
     } catch {
       // No audio available - the key still works, just silently.
     }
@@ -52,10 +48,10 @@ export function useTone(soundOn: boolean, hapticsOn: boolean) {
   const toneOn = useCallback(() => {
     setLit(true);
     // Safari has no vibration API, so don't pretend otherwise.
-    if (hapticsOn && Platform.OS !== 'web') {
+    if (hapticsOn && Haptics && Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     }
-    if (!soundOn) return;
+    if (!soundOn || !player) return;
     try {
       player.play();
     } catch {
@@ -65,7 +61,7 @@ export function useTone(soundOn: boolean, hapticsOn: boolean) {
 
   const toneOff = useCallback(() => {
     setLit(false);
-    if (!soundOn) return;
+    if (!soundOn || !player) return;
     try {
       player.pause();
       player.seekTo(0);

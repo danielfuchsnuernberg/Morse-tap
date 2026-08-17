@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import * as SplashScreen from 'expo-splash-screen';
+import { KeepAwake, Splash, nativeFailures } from './src/native';
 import { theme } from './src/theme';
 import {
   nextHintIndex,
@@ -70,11 +69,14 @@ export default function App() {
 }
 
 function MorseChat() {
-  // Insurance: the splash screen dismisses itself, but if anything ever
-  // holds it open the app would look like a blank screen with no clue.
+  // The splash screen usually dismisses itself, but if anything holds it
+  // open the app looks like a blank screen with no clue what went wrong.
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => undefined);
+    Splash?.hideAsync().catch(() => undefined);
   }, []);
+
+  // If a native module failed to load, say so rather than behaving oddly.
+  const [failures] = useState(nativeFailures);
 
   const [tab, setTab] = useState<Tab>('key');
   const [room, setRoom] = useState('');
@@ -124,18 +126,19 @@ function MorseChat() {
   // the setting means the same thing in a real build.
   useEffect(() => {
     const tag = 'morse-tap';
+    if (!KeepAwake) return;
     if (prefs.keepAwake) {
-      activateKeepAwakeAsync(tag).catch(() => undefined);
+      KeepAwake.activateKeepAwakeAsync(tag).catch(() => undefined);
     } else {
       try {
-        deactivateKeepAwake(tag);
+        KeepAwake.deactivateKeepAwake(tag);
       } catch {
         /* nothing was holding it */
       }
     }
     return () => {
       try {
-        deactivateKeepAwake(tag);
+        KeepAwake?.deactivateKeepAwake(tag);
       } catch {
         /* ignore */
       }
@@ -384,6 +387,14 @@ function MorseChat() {
     <SafeAreaView style={styles.root}>
       <StatusBar style="light" />
 
+      {failures.length > 0 ? (
+        <View style={styles.failureBar}>
+          <Text style={styles.failureText}>
+            {failures.map((f) => `${f.module}: ${f.message}`).join('\n')}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>MORSE CHAT</Text>
@@ -484,6 +495,16 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  failureBar: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.bad,
+    backgroundColor: theme.surface,
+  },
+  failureText: { color: theme.bad, fontSize: 11, fontFamily: 'Courier', lineHeight: 15 },
   title: { color: theme.text, fontSize: 18, fontWeight: '800', letterSpacing: 3 },
   tabs: {
     flexDirection: 'row',

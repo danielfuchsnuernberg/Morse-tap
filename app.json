@@ -2,7 +2,7 @@
   "expo": {
     "name": "Morse Chat",
     "slug": "morse-tap",
-    "version": "0.0.30",
+    "version": "0.0.31",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -10,10 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danielfuchs.morsetap",
-      "buildNumber": "5",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "buildNumber": "4"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,11 +19,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.danielfuchs.morsetap",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      "package": "com.danielfuchs.morsetap"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -47,11 +40,6 @@
           "backgroundColor": "#0B0E14"
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "2b1edbea-fdc6-470e-9ac6-c391bddadb13"
-      }
-    }
+    ]
   }
 }

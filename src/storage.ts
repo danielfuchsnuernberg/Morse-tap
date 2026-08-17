@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Storage } from './native';
 import { DEFAULT_PREFS, clampEffective, type Prefs } from './settings';
 import { ECHO_START, EMPTY_PUZZLE, echoLetterCount, sanitizeEcho } from './morse';
 import type { Message } from './screens/KeyScreen';
@@ -138,7 +138,8 @@ export async function loadAll(): Promise<{
   messages: Message[];
 }> {
   try {
-    const [prefs, session, messages] = await AsyncStorage.multiGet([
+    if (!Storage) return { prefs: DEFAULT_PREFS, session: EMPTY_SESSION, messages: [] };
+    const [prefs, session, messages] = await Storage.multiGet([
       KEY_PREFS,
       KEY_SESSION,
       KEY_MESSAGES,
@@ -154,7 +155,7 @@ export async function loadAll(): Promise<{
 }
 
 const write = (key: string, value: unknown) =>
-  AsyncStorage.setItem(key, JSON.stringify(value)).catch(() => undefined);
+  Storage?.setItem(key, JSON.stringify(value)).catch(() => undefined) ?? Promise.resolve();
 
 export const savePrefs = (prefs: Prefs) => write(KEY_PREFS, prefs);
 export const saveSession = (session: Session) => write(KEY_SESSION, session);
@@ -162,5 +163,5 @@ export const saveMessages = (messages: Message[]) =>
   write(KEY_MESSAGES, trimMessages(messages));
 
 export async function clearMessages(): Promise<void> {
-  await AsyncStorage.removeItem(KEY_MESSAGES).catch(() => undefined);
+  await Storage?.removeItem(KEY_MESSAGES).catch(() => undefined);
 }
