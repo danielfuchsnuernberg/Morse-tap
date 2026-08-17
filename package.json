@@ -1,6 +1,6 @@
 {
   "name": "morse-tap",
-  "version": "0.0.27",
+  "version": "0.0.29",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",

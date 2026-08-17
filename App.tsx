@@ -27,6 +27,7 @@ import { useRelay, type Ack, type Incoming } from './src/useRelay';
 import { useTone } from './src/useTone';
 import KeyScreen, { newMessage, type Message } from './src/screens/KeyScreen';
 import ConnectionBar, { ConnectionChip } from './src/components/ConnectionBar';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import {
   loadAll,
   savePrefs,
@@ -55,7 +56,19 @@ const slowed = (timing: ReturnType<typeof timingFor>) => ({
 let messageCounter = 0;
 const nextId = () => `m${++messageCounter}`;
 
+/**
+ * A crash in a release build renders nothing at all, which is impossible
+ * to diagnose. Wrap everything so it shows the error instead.
+ */
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <MorseChat />
+    </ErrorBoundary>
+  );
+}
+
+function MorseChat() {
   const [tab, setTab] = useState<Tab>('key');
   const [room, setRoom] = useState('');
   const [connected, setConnected] = useState(false);
@@ -366,7 +379,7 @@ export default function App() {
 
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Text style={styles.title}>MORSE TAP</Text>
+          <Text style={styles.title}>MORSE CHAT</Text>
           <ConnectionChip
             status={status}
             peers={peers}

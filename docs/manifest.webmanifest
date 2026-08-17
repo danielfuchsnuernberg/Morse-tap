@@ -1,6 +1,6 @@
 {
-  "name": "Morse Tap",
-  "short_name": "Morse Tap",
+  "name": "Morse Chat",
+  "short_name": "Morse Chat",
   "description": "Send morse code to another person, in real time.",
   "start_url": "./index.html",
   "scope": "./",

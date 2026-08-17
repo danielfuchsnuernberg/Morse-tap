@@ -158,6 +158,19 @@ Anything that couldn't go out is held and sent automatically the moment the conn
 including after a restart. Nothing is silently dropped, and nothing claims to have been sent when
 it wasn't.
 
+## Config plugins — the trap that only bites a real build
+
+Some Expo packages ship a **config plugin**: native settings the app needs, like permission strings.
+Expo Go already has all of that configured, so a missing plugin entry is completely invisible during
+development and only breaks the release build — where iOS will terminate the app for touching an API
+with no usage string, giving you a black screen and no explanation.
+
+`expo-audio` is one of these. `sim/plugins.sim.mts` scans every dependency for an `app.plugin.js`
+and fails if it isn't declared in `app.json`, so this can't be forgotten again.
+
+The app is also wrapped in an error boundary, because a release build otherwise renders **nothing**
+when it crashes. Now it shows the message and the stack on screen.
+
 ## Staying connected
 
 A WebSocket that dies quietly never tells you. A sleeping phone, a server going idle, a network

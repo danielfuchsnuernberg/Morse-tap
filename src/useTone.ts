@@ -4,6 +4,12 @@ import * as Haptics from 'expo-haptics';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { buildScheduleWith, type Timing } from './morse';
 
+/**
+ * Resolved once, at module load, so a failure here surfaces immediately
+ * rather than halfway through a render.
+ */
+const TONE_SOURCE = require('../assets/tone.wav');
+
 export type PlaybackState = {
   /** Which message is sounding right now, or null. */
   messageId: string | null;
@@ -21,7 +27,9 @@ const IDLE: PlaybackState = { messageId: null, letterIndex: -1 };
  * sound and the UI can never drift apart: both come from one schedule.
  */
 export function useTone(soundOn: boolean, hapticsOn: boolean) {
-  const player = useAudioPlayer(require('../assets/tone.wav'));
+  // A release build loads assets differently from Expo Go, so treat the
+  // player as something that might not exist rather than assuming it.
+  const player = useAudioPlayer(TONE_SOURCE);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [playback, setPlayback] = useState<PlaybackState>(IDLE);
   const [lit, setLit] = useState(false);
@@ -34,7 +42,11 @@ export function useTone(soundOn: boolean, hapticsOn: boolean) {
   }, []);
 
   useEffect(() => {
-    player.loop = true;
+    try {
+      player.loop = true;
+    } catch {
+      // No audio available - the key still works, just silently.
+    }
   }, [player]);
 
   const toneOn = useCallback(() => {

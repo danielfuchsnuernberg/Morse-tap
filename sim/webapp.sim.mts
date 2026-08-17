@@ -32,6 +32,12 @@ void templated;
 /* ---- PWA requirements for Add to Home Screen ---- */
 const manifest = JSON.parse(readFileSync('web/manifest.webmanifest', 'utf8'));
 check(manifest.display === 'standalone', 'manifest must be standalone or it opens in Safari');
+// The name shown under the icon must match the app, not a stale one.
+check(manifest.name === 'Morse Chat', `manifest name is "${manifest.name}"`);
+check(manifest.short_name === 'Morse Chat', `manifest short_name is "${manifest.short_name}"`);
+check(html.includes('apple-mobile-web-app-title" content="Morse Chat"'),
+  'iOS reads its own title tag for the home screen name');
+check(html.includes('<title>Morse Chat</title>'), 'the page title should match');
 check(manifest.icons.some((i: any) => i.sizes === '192x192'), 'a 192px icon is required');
 check(manifest.icons.some((i: any) => i.sizes === '512x512'), 'a 512px icon is required');
 check(manifest.start_url.length > 0, 'manifest needs a start_url');

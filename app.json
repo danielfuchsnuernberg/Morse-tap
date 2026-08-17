@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Morse Tap",
+    "name": "Morse Chat",
     "slug": "morse-tap",
-    "version": "0.0.27",
+    "version": "0.0.29",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danielfuchs.morsetap",
-      "buildNumber": "1"
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,6 +28,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Morse Chat plays a tone for morse code. It never records audio."
+        }
+      ]
+    ]
   }
 }
