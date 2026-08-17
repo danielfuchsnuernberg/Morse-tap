@@ -15,7 +15,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danielfuchs.morsetap",
-      "buildNumber": "2"
+      "buildNumber": "3",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +27,11 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.danielfuchs.morsetap"
+      "package": "com.danielfuchs.morsetap",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,6 +43,11 @@
           "microphonePermission": "Morse Chat plays a tone for morse code. It never records audio."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2b1edbea-fdc6-470e-9ac6-c391bddadb13"
+      }
+    }
   }
 }
