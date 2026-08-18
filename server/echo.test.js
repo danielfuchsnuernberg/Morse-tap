@@ -259,3 +259,10 @@ test('an old client that cannot identify itself is not looped for ever', async (
   assert.deepEqual(seen, [1, 1, 1, 1, 0, 0], `hand-outs went ${seen.join(',')}`);
   assert.equal(lists.get('ECHO6').length, 0, 'the message should have been dropped');
 });
+
+test('/health says which version is running', async () => {
+  const response = await fetch(`http://127.0.0.1:${process.env.PORT}/health`);
+  const body = await response.json();
+  assert.equal(body.version, 'v5', 'health must name the running version');
+  assert.equal(body.status, 'ok');
+});

@@ -16,6 +16,12 @@ const MAX_ROOM_SIZE = 8;
 const MAX_MESSAGE_BYTES = 4096;
 const HEARTBEAT_MS = 30000;
 
+/**
+ * Shown by /health so it is always possible to tell which code Render is
+ * actually running, rather than which code was pushed to GitHub.
+ */
+const SERVER_VERSION = 'v5';
+
 /** roomCode -> Set of sockets */
 const rooms = new Map();
 
@@ -28,6 +34,7 @@ const server = http.createServer((req, res) => {
         res.end(
           JSON.stringify({
             status: 'ok',
+            version: SERVER_VERSION,
             rooms: rooms.size,
             clients: [...rooms.values()].reduce((total, set) => total + set.size, 0),
             ...storage,
