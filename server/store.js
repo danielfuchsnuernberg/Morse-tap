@@ -47,6 +47,10 @@ async function command(...parts) {
 }
 
 const pendingKey = (room) => `pending:${room}`;
+const tokensKey = (room) => `tokens:${room}`;
+
+/** How long a push token is remembered without being seen again. */
+const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90; // 90 days
 
 /**
  * Hold a message for a room. Anyone who joins later receives it.
@@ -96,6 +100,49 @@ async function forget(room, deliveredIds) {
   await command('EXPIRE', pendingKey(room), MESSAGE_TTL_SECONDS);
 }
 
+/**
+ * Remember where to notify a device, keyed by the device's own id so a
+ * reinstall replaces the old token rather than adding a second one.
+ */
+async function rememberToken(room, clientId, token) {
+  if (!token) return;
+  await command('HSET', tokensKey(room), clientId, token);
+  await command('EXPIRE', tokensKey(room), TOKEN_TTL_SECONDS);
+}
+
+/**
+ * Every device registered for a room, except the one asking, as
+ * { clientId, token } pairs - the id is needed to work out how many
+ * messages are waiting for that particular person.
+ */
+async function tokensFor(room, exceptClientId) {
+  const raw = await command('HGETALL', tokensKey(room));
+  if (!raw) return [];
+
+  // Upstash returns a flat [field, value, field, value] array.
+  const entries = [];
+  if (Array.isArray(raw)) {
+    for (let index = 0; index < raw.length; index += 2) {
+      entries.push([raw[index], raw[index + 1]]);
+    }
+  } else if (typeof raw === 'object') {
+    entries.push(...Object.entries(raw));
+  }
+
+  return entries
+    .filter(([clientId, token]) => clientId !== exceptClientId && Boolean(token))
+    .map(([clientId, token]) => ({ clientId, token }));
+}
+
+/** Drop a token the push service has told us is dead. */
+async function forgetToken(room, token) {
+  const raw = await command('HGETALL', tokensKey(room));
+  if (!Array.isArray(raw)) return;
+  for (let index = 0; index < raw.length; index += 2) {
+    if (raw[index + 1] === token) await command('HDEL', tokensKey(room), raw[index]);
+  }
+}
+
 /** Used by the health endpoint so you can see whether storage is on. */
 async function health() {
   if (!isConfigured) return { storage: 'off' };
@@ -103,4 +150,13 @@ async function health() {
   return { storage: pong === 'PONG' ? 'ok' : 'unreachable' };
 }
 
-module.exports = { isConfigured, hold, pending, forget, health };
+module.exports = {
+  isConfigured,
+  hold,
+  pending,
+  forget,
+  health,
+  rememberToken,
+  tokensFor,
+  forgetToken,
+};

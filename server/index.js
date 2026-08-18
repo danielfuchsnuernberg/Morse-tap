@@ -9,6 +9,7 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const store = require('./store');
+const push = require('./push');
 
 const PORT = process.env.PORT || 8080;
 const MAX_ROOM_SIZE = 8;
@@ -113,12 +114,40 @@ async function deliverPending(socket, roomCode) {
   }
 }
 
+/**
+ * Tell everyone registered for this room, except the sender, that
+ * something is waiting. Says nothing about what it is.
+ */
+async function notifyAbsent(roomCode, senderId, symbols) {
+  if (!store.isConfigured) return;
+  try {
+    const devices = await store.tokensFor(roomCode, senderId);
+    if (devices.length === 0) return;
+
+    const waiting = await store.pending(roomCode);
+
+    // How many are waiting depends on who is being told: their own
+    // messages don't count, everyone else's do.
+    const recipients = devices.map(({ clientId, token }) => ({
+      token,
+      symbols,
+      count: waiting.filter((message) => message.from !== clientId).length || 1,
+    }));
+
+    const { dead } = await push.notify(recipients);
+    for (const token of dead) await store.forgetToken(roomCode, token);
+  } catch (error) {
+    console.error('could not notify:', error.message);
+  }
+}
+
 wss.on('connection', (socket) => {
   socket.roomCode = null;
   socket.isAlive = true;
   // Identifies this connection, so we never hand someone their own
   // message back when they rejoin.
   socket.clientId = `c${++clientCounter}-${Date.now()}`;
+  socket.pushToken = null;
 
   socket.on('pong', () => {
     socket.isAlive = true;
@@ -140,6 +169,9 @@ wss.on('connection', (socket) => {
       if (typeof message.clientId === 'string' && message.clientId.length > 0) {
         socket.clientId = message.clientId.slice(0, 64);
       }
+      if (typeof message.pushToken === 'string' && message.pushToken.length > 0) {
+        socket.pushToken = message.pushToken.slice(0, 256);
+      }
       if (roomCode.length < 3) {
         send(socket, { type: 'error', reason: 'room-too-short' });
         return;
@@ -158,6 +190,9 @@ wss.on('connection', (socket) => {
 
       send(socket, { type: 'joined', room: roomCode });
       broadcastPeerCount(roomCode);
+      if (socket.pushToken) {
+        store.rememberToken(roomCode, socket.clientId, socket.pushToken).catch(() => undefined);
+      }
       deliverPending(socket, roomCode);
       return;
     }
@@ -207,6 +242,11 @@ wss.on('connection', (socket) => {
           sentAt: payload.sentAt,
         })
         .catch(() => undefined);
+
+      // Nobody here to see it? Buzz their phone instead.
+      if (peers.length === 0) {
+        notifyAbsent(socket.roomCode, socket.clientId, payload.symbols).catch(() => undefined);
+      }
 
       // Tell the sender what actually happened, so the app can stop
       // claiming a message was sent when nobody was there to hear it.
