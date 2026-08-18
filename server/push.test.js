@@ -12,6 +12,7 @@ const Module = require('node:module');
 /* ---- stand-ins, installed before the server loads ---- */
 const lists = new Map();
 const delivered = new Map();
+const handouts = new Map();
 const tokens = new Map(); // room -> Map(clientId -> token)
 const sent = [];
 let pushShouldFail = false;
@@ -19,6 +20,17 @@ let deadTokens = [];
 
 const fakeStore = {
   isConfigured: true,
+  async countHandouts(room, ids) {
+    const spent = [];
+    for (const id of ids) {
+      const key = `${room}:${id}`;
+      const count = (handouts.get(key) ?? 0) + 1;
+      handouts.set(key, count);
+      if (count >= 4) spent.push(String(id));
+    }
+    return spent;
+  },
+
   async alreadyDelivered(room, clientId) {
     return [...(delivered.get(`${room}:${clientId}`) ?? [])];
   },

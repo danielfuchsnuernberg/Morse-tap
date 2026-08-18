@@ -119,7 +119,13 @@ async function deliverPending(socket, roomCode) {
 
     // Handed over. Even if this client never confirms, it must not be
     // given the same message again the next time it opens the app.
-    await store.markDelivered(roomCode, socket.clientId, forThem.map((message) => message.id));
+    const ids = forThem.map((message) => message.id);
+    await store.markDelivered(roomCode, socket.clientId, ids);
+
+    // Last resort for clients that never say who they are: after a few
+    // hand-outs the message is dropped rather than offered for ever.
+    const spent = await store.countHandouts(roomCode, ids);
+    if (spent.length > 0) await store.forget(roomCode, spent);
   } catch (error) {
     console.error('could not deliver held messages:', error.message);
   }

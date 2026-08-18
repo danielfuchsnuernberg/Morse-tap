@@ -48,6 +48,18 @@ async function command(...parts) {
 
 const pendingKey = (room) => `pending:${room}`;
 const deliveredKey = (room, clientId) => `delivered:${room}:${clientId}`;
+const handoutKey = (room) => `handouts:${room}`;
+
+/**
+ * A message is given up on after this many hand-outs.
+ *
+ * Older clients don't identify themselves, so the server cannot tell one
+ * of their visits from the next and would offer them the same message
+ * every time they opened the app. Counting hand-outs puts a hard stop on
+ * that. Four is far more than a two-person room ever needs, so nothing
+ * is lost, but the loop can't run for thirty days.
+ */
+const MAX_HANDOUTS = 4;
 const tokensKey = (room) => `tokens:${room}`;
 
 /** How long a push token is remembered without being seen again. */
@@ -156,6 +168,20 @@ async function tokensFor(room, exceptClientId) {
     .map(([clientId, token]) => ({ clientId, token }));
 }
 
+/**
+ * Count how often these messages have now been handed out, and report
+ * the ones that have run out of chances so the caller can drop them.
+ */
+async function countHandouts(room, ids) {
+  const spent = [];
+  for (const id of ids) {
+    const count = await command('HINCRBY', handoutKey(room), String(id), 1);
+    if (typeof count === 'number' && count >= MAX_HANDOUTS) spent.push(String(id));
+  }
+  if (ids.length > 0) await command('EXPIRE', handoutKey(room), MESSAGE_TTL_SECONDS);
+  return spent;
+}
+
 /** Drop a token the push service has told us is dead. */
 async function forgetToken(room, token) {
   const raw = await command('HGETALL', tokensKey(room));
@@ -179,6 +205,7 @@ module.exports = {
   forget,
   alreadyDelivered,
   markDelivered,
+  countHandouts,
   health,
   rememberToken,
   tokensFor,

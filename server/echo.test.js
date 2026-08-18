@@ -17,8 +17,20 @@ const Module = require('node:module');
 
 const lists = new Map();
 const delivered = new Map();
+const handouts = new Map();
 const fakeStore = {
   isConfigured: true,
+  async countHandouts(room, ids) {
+    const spent = [];
+    for (const id of ids) {
+      const key = `${room}:${id}`;
+      const count = (handouts.get(key) ?? 0) + 1;
+      handouts.set(key, count);
+      if (count >= 4) spent.push(String(id));
+    }
+    return spent;
+  },
+
   async alreadyDelivered(room, clientId) {
     return [...(delivered.get(`${room}:${clientId}`) ?? [])];
   },
@@ -218,4 +230,32 @@ test('a client that never confirms is still not given the same message twice', a
   const got = await waitFor(otherPhone, (m) => m.type === 'morse', 'still waiting for someone new');
   assert.equal(got.symbols, '- .');
   otherPhone.close();
+});
+
+test('an old client that cannot identify itself is not looped for ever', async () => {
+  lists.clear();
+  delivered.clear();
+  handouts.clear();
+
+  const her = await connect();
+  await join(her, 'echo6', 'her-phone');
+  her.send(JSON.stringify({ type: 'morse', id: 'old-1', symbols: '.- -...' }));
+  await waitFor(her, (m) => m.type === 'ack', 'ack');
+  her.close();
+  await quiet();
+
+  // An older build: it never sends a clientId, so every connection looks
+  // like a stranger. Open the app six times.
+  const seen = [];
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const phone = await connect();
+    phone.send(JSON.stringify({ type: 'join', room: 'echo6' }));
+    await waitFor(phone, (m) => m.type === 'joined', 'joined');
+    await quiet(250);
+    seen.push(phone.inbox.filter((m) => m.type === 'morse').length);
+    phone.close();
+  }
+
+  assert.deepEqual(seen, [1, 1, 1, 1, 0, 0], `hand-outs went ${seen.join(',')}`);
+  assert.equal(lists.get('ECHO6').length, 0, 'the message should have been dropped');
 });
