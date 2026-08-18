@@ -47,6 +47,7 @@ async function command(...parts) {
 }
 
 const pendingKey = (room) => `pending:${room}`;
+const deliveredKey = (room, clientId) => `delivered:${room}:${clientId}`;
 const tokensKey = (room) => `tokens:${room}`;
 
 /** How long a push token is remembered without being seen again. */
@@ -98,6 +99,27 @@ async function forget(room, deliveredIds) {
 
   await command('RPUSH', pendingKey(room), ...remaining.map((m) => JSON.stringify(m)));
   await command('EXPIRE', pendingKey(room), MESSAGE_TTL_SECONDS);
+}
+
+/**
+ * Which held messages this device has already been handed.
+ *
+ * Confirmation is the tidy way to drop a message, but a client that
+ * never confirms - an older build, or one killed mid-delivery - would
+ * otherwise be given the same message again every single time it opened
+ * the app. This remembers what it has seen so that cannot happen.
+ */
+async function alreadyDelivered(room, clientId) {
+  if (!clientId) return [];
+  const raw = await command('SMEMBERS', deliveredKey(room, clientId));
+  return Array.isArray(raw) ? raw.map(String) : [];
+}
+
+/** Note that these messages have now been handed to this device. */
+async function markDelivered(room, clientId, ids) {
+  if (!clientId || ids.length === 0) return;
+  await command('SADD', deliveredKey(room, clientId), ...ids.map(String));
+  await command('EXPIRE', deliveredKey(room, clientId), MESSAGE_TTL_SECONDS);
 }
 
 /**
@@ -155,6 +177,8 @@ module.exports = {
   hold,
   pending,
   forget,
+  alreadyDelivered,
+  markDelivered,
   health,
   rememberToken,
   tokensFor,

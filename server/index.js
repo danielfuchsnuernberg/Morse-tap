@@ -98,17 +98,28 @@ async function deliverPending(socket, roomCode) {
   if (!store.isConfigured) return;
   try {
     const waiting = await store.pending(roomCode);
-    const forThem = waiting.filter((message) => message.from !== socket.clientId);
+    const seen = await store.alreadyDelivered(roomCode, socket.clientId);
+    const forThem = waiting.filter(
+      (message) => message.from !== socket.clientId && !seen.includes(String(message.id))
+    );
     if (forThem.length === 0) return;
 
     for (const message of forThem) {
       send(socket, {
+        // Without the id the client cannot confirm receipt, so the
+        // message is never dropped and comes back on every single
+        // reconnect, for thirty days.
+        id: message.id,
         type: 'morse',
         symbols: message.symbols,
         sentAt: message.sentAt,
         held: true,
       });
     }
+
+    // Handed over. Even if this client never confirms, it must not be
+    // given the same message again the next time it opens the app.
+    await store.markDelivered(roomCode, socket.clientId, forThem.map((message) => message.id));
   } catch (error) {
     console.error('could not deliver held messages:', error.message);
   }
@@ -228,7 +239,16 @@ wss.on('connection', (socket) => {
         sentAt: Date.now(),
       };
 
-      const peers = peersOf(socket);
+      // Never hand a message back to the phone that sent it. A phone can
+      // briefly hold two sockets in a room - during a reconnect, or with
+      // the web version open beside the app - and the second one is a
+      // peer as far as the room is concerned. Matching on the device's
+      // own id is the only reliable way to tell "someone else" from
+      // "me again". Sockets that never sent an id are left alone, so an
+      // older client is never cut off.
+      const peers = peersOf(socket).filter(
+        (peer) => !(socket.clientId && peer.clientId && peer.clientId === socket.clientId)
+      );
       for (const peer of peers) send(peer, payload);
 
       // Nobody there? Keep it, so it arrives when they next connect.

@@ -12,8 +12,18 @@ const Module = require('node:module');
 
 /* ---- stand in for Upstash before the server loads ---- */
 const lists = new Map();
+const delivered = new Map();
 const fakeStore = {
   isConfigured: true,
+  async alreadyDelivered(room, clientId) {
+    return [...(delivered.get(`${room}:${clientId}`) ?? [])];
+  },
+  async markDelivered(room, clientId, ids) {
+    if (!clientId || ids.length === 0) return;
+    const key = `${room}:${clientId}`;
+    delivered.set(key, [...(delivered.get(key) ?? []), ...ids.map(String)]);
+  },
+
   async hold(room, message) {
     if (!lists.has(room)) lists.set(room, []);
     lists.get(room).push(message);
