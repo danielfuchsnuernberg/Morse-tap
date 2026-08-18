@@ -8,6 +8,7 @@
 
 const http = require('http');
 const { WebSocketServer } = require('ws');
+const store = require('./store');
 
 const PORT = process.env.PORT || 8080;
 const MAX_ROOM_SIZE = 8;
@@ -19,14 +20,23 @@ const rooms = new Map();
 
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(
-      JSON.stringify({
-        status: 'ok',
-        rooms: rooms.size,
-        clients: [...rooms.values()].reduce((total, set) => total + set.size, 0),
+    store
+      .health()
+      .then((storage) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            rooms: rooms.size,
+            clients: [...rooms.values()].reduce((total, set) => total + set.size, 0),
+            ...storage,
+          })
+        );
       })
-    );
+      .catch(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', storage: 'error' }));
+      });
     return;
   }
   res.writeHead(404);
@@ -77,9 +87,38 @@ function leaveRoom(socket) {
   socket.roomCode = null;
 }
 
+let clientCounter = 0;
+
+/**
+ * Hand a newly joined client anything that was waiting for this room,
+ * skipping whatever it sent itself.
+ */
+async function deliverPending(socket, roomCode) {
+  if (!store.isConfigured) return;
+  try {
+    const waiting = await store.pending(roomCode);
+    const forThem = waiting.filter((message) => message.from !== socket.clientId);
+    if (forThem.length === 0) return;
+
+    for (const message of forThem) {
+      send(socket, {
+        type: 'morse',
+        symbols: message.symbols,
+        sentAt: message.sentAt,
+        held: true,
+      });
+    }
+  } catch (error) {
+    console.error('could not deliver held messages:', error.message);
+  }
+}
+
 wss.on('connection', (socket) => {
   socket.roomCode = null;
   socket.isAlive = true;
+  // Identifies this connection, so we never hand someone their own
+  // message back when they rejoin.
+  socket.clientId = `c${++clientCounter}-${Date.now()}`;
 
   socket.on('pong', () => {
     socket.isAlive = true;
@@ -96,6 +135,11 @@ wss.on('connection', (socket) => {
 
     if (message.type === 'join') {
       const roomCode = normaliseRoom(message.room);
+      // The device tells us who it is, so a reconnect is recognised as
+      // the same person and never gets handed back its own messages.
+      if (typeof message.clientId === 'string' && message.clientId.length > 0) {
+        socket.clientId = message.clientId.slice(0, 64);
+      }
       if (roomCode.length < 3) {
         send(socket, { type: 'error', reason: 'room-too-short' });
         return;
@@ -114,6 +158,16 @@ wss.on('connection', (socket) => {
 
       send(socket, { type: 'joined', room: roomCode });
       broadcastPeerCount(roomCode);
+      deliverPending(socket, roomCode);
+      return;
+    }
+
+    // A client confirming it has received held messages.
+    if (message.type === 'received') {
+      const ids = Array.isArray(message.ids) ? message.ids.map(String) : [];
+      if (socket.roomCode && ids.length > 0) {
+        store.forget(socket.roomCode, ids).catch(() => undefined);
+      }
       return;
     }
 
@@ -142,12 +196,25 @@ wss.on('connection', (socket) => {
       const peers = peersOf(socket);
       for (const peer of peers) send(peer, payload);
 
+      // Nobody there? Keep it, so it arrives when they next connect.
+      // Also keep it when they ARE there, until they confirm receipt -
+      // being connected is not the same as having received it.
+      store
+        .hold(socket.roomCode, {
+          id: message.id ?? `s${Date.now()}`,
+          from: socket.clientId,
+          symbols: payload.symbols,
+          sentAt: payload.sentAt,
+        })
+        .catch(() => undefined);
+
       // Tell the sender what actually happened, so the app can stop
       // claiming a message was sent when nobody was there to hear it.
       send(socket, {
         type: 'ack',
         id: message.id ?? null,
         deliveredTo: peers.length,
+        held: !store.isConfigured ? false : true,
       });
       return;
     }

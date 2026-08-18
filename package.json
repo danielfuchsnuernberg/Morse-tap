@@ -1,6 +1,6 @@
 {
   "name": "morse-tap",
-  "version": "0.0.31",
+  "version": "0.0.33",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -15,7 +15,9 @@
     "web:build": "node web/publish.mjs",
     "test:web": "tsx sim/webapp.sim.mts",
     "build:ios": "eas build --platform ios --profile production",
-    "submit:ios": "eas submit --platform ios --latest"
+    "submit:ios": "eas submit --platform ios --latest",
+    "bisect:minimal": "node bisect.mjs minimal",
+    "bisect:real": "node bisect.mjs real"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

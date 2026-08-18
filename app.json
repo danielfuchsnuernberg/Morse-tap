@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Morse Chat",
+    "name": "Morse Chat TEST",
     "slug": "morse-tap",
-    "version": "0.0.31",
+    "version": "0.0.33",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danielfuchs.morsetap",
-      "buildNumber": "5",
+      "buildNumber": "4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -44,7 +44,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#0B0E14"
+          "backgroundColor": "#1133AA"
         }
       ]
     ],

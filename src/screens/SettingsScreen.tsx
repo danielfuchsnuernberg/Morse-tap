@@ -276,7 +276,7 @@ export default function SettingsScreen({ prefs, onChange, messageCount, onClearH
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.version}>Morse Chat v031</Text>
+      <Text style={styles.version}>Morse Chat v033</Text>
     </ScrollView>
   );
 }
