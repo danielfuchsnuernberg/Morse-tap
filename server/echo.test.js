@@ -263,6 +263,40 @@ test('an old client that cannot identify itself is not looped for ever', async (
 test('/health says which version is running', async () => {
   const response = await fetch(`http://127.0.0.1:${process.env.PORT}/health`);
   const body = await response.json();
-  assert.equal(body.version, 'v5', 'health must name the running version');
+  assert.equal(body.version, 'v6', 'health must name the running version');
   assert.equal(body.status, 'ok');
+});
+
+test('a message received live is not delivered a second time later', async () => {
+  lists.clear();
+  delivered.clear();
+  handouts.clear();
+
+  const mac = await connect();
+  const phone = await connect();
+  await join(mac, 'echo7', 'mac-web');
+  await join(phone, 'echo7', 'danny-phone');
+
+  mac.send(JSON.stringify({ type: 'morse', id: 'live-1', symbols: '- . ... - .----' }));
+  const live = await waitFor(phone, (m) => m.type === 'morse', 'the live copy');
+
+  assert.equal(live.id, 'live-1', 'a live message must carry its id, or it can never be confirmed');
+
+  // The phone confirms, exactly as the app does.
+  phone.send(JSON.stringify({ type: 'received', ids: [live.id] }));
+  await quiet();
+  phone.close();
+  mac.close();
+  await quiet();
+
+  // Reopen the app. Nothing should be waiting.
+  const again = await connect();
+  await join(again, 'echo7', 'danny-phone');
+  await quiet(300);
+  assert.equal(
+    again.inbox.filter((m) => m.type === 'morse').length,
+    0,
+    'the live message came back a second time'
+  );
+  again.close();
 });

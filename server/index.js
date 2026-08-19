@@ -20,7 +20,7 @@ const HEARTBEAT_MS = 30000;
  * Shown by /health so it is always possible to tell which code Render is
  * actually running, rather than which code was pushed to GitHub.
  */
-const SERVER_VERSION = 'v5';
+const SERVER_VERSION = 'v6';
 
 /** roomCode -> Set of sockets */
 const rooms = new Map();
@@ -246,8 +246,14 @@ wss.on('connection', (socket) => {
         send(socket, { type: 'error', reason: 'not-in-room', id: message.id });
         return;
       }
+      // The id travels with the message, live as well as held. Without
+      // it the receiver has nothing to confirm, so the copy kept for
+      // safekeeping is never dropped and turns up again on the next
+      // connection - the same message, twice.
+      const messageId = message.id ?? `s${Date.now()}`;
       const payload = {
         type: 'morse',
+        id: messageId,
         symbols: String(message.symbols || '').slice(0, 1000),
         sentAt: Date.now(),
       };
@@ -269,7 +275,7 @@ wss.on('connection', (socket) => {
       // being connected is not the same as having received it.
       store
         .hold(socket.roomCode, {
-          id: message.id ?? `s${Date.now()}`,
+          id: messageId,
           from: socket.clientId,
           symbols: payload.symbols,
           sentAt: payload.sentAt,
