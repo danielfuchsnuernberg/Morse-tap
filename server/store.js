@@ -49,6 +49,7 @@ async function command(...parts) {
 const pendingKey = (room) => `pending:${room}`;
 const deliveredKey = (room, clientId) => `delivered:${room}:${clientId}`;
 const handoutKey = (room) => `handouts:${room}`;
+const confirmedKey = (room) => `confirmed:${room}`;
 
 /**
  * A message is given up on after this many hand-outs.
@@ -111,6 +112,25 @@ async function forget(room, deliveredIds) {
 
   await command('RPUSH', pendingKey(room), ...remaining.map((m) => JSON.stringify(m)));
   await command('EXPIRE', pendingKey(room), MESSAGE_TTL_SECONDS);
+}
+
+/**
+ * Messages the recipient has actually confirmed receiving.
+ *
+ * Kept as a set rather than by rewriting the waiting list, because two
+ * confirmations arriving at once could otherwise read the same list,
+ * both rewrite it, and bring a message back from the dead.
+ */
+async function confirm(room, ids) {
+  if (ids.length === 0) return;
+  await command('SADD', confirmedKey(room), ...ids.map(String));
+  await command('EXPIRE', confirmedKey(room), MESSAGE_TTL_SECONDS);
+}
+
+/** Ids that have been confirmed, so they are never offered again. */
+async function confirmedIds(room) {
+  const raw = await command('SMEMBERS', confirmedKey(room));
+  return Array.isArray(raw) ? raw.map(String) : [];
 }
 
 /**
@@ -206,6 +226,8 @@ module.exports = {
   alreadyDelivered,
   markDelivered,
   countHandouts,
+  confirm,
+  confirmedIds,
   health,
   rememberToken,
   tokensFor,

@@ -13,6 +13,7 @@ const Module = require('node:module');
 const lists = new Map();
 const delivered = new Map();
 const handouts = new Map();
+const confirmed = new Map();
 const tokens = new Map(); // room -> Map(clientId -> token)
 const sent = [];
 let pushShouldFail = false;
@@ -20,6 +21,14 @@ let deadTokens = [];
 
 const fakeStore = {
   isConfigured: true,
+  async confirm(room, ids) {
+    if (!confirmed.has(room)) confirmed.set(room, new Set());
+    for (const id of ids) confirmed.get(room).add(String(id));
+  },
+  async confirmedIds(room) {
+    return [...(confirmed.get(room) ?? [])];
+  },
+
   async countHandouts(room, ids) {
     const spent = [];
     for (const id of ids) {

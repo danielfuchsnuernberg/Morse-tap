@@ -20,7 +20,7 @@ const HEARTBEAT_MS = 30000;
  * Shown by /health so it is always possible to tell which code Render is
  * actually running, rather than which code was pushed to GitHub.
  */
-const SERVER_VERSION = 'v6';
+const SERVER_VERSION = 'v7';
 
 /** roomCode -> Set of sockets */
 const rooms = new Map();
@@ -105,9 +105,17 @@ async function deliverPending(socket, roomCode) {
   if (!store.isConfigured) return;
   try {
     const waiting = await store.pending(roomCode);
+    // Only two things stop a message being offered: the recipient
+    // confirmed it, or it has been handed out too many times. Handing it
+    // over is NOT enough - a connection can die between the server
+    // sending and the phone showing it, and that message must survive.
+    const confirmed = await store.confirmedIds(roomCode);
     const seen = await store.alreadyDelivered(roomCode, socket.clientId);
     const forThem = waiting.filter(
-      (message) => message.from !== socket.clientId && !seen.includes(String(message.id))
+      (message) =>
+        message.from !== socket.clientId &&
+        !confirmed.includes(String(message.id)) &&
+        !seen.includes(String(message.id))
     );
     if (forThem.length === 0) return;
 
@@ -127,10 +135,9 @@ async function deliverPending(socket, roomCode) {
     // Handed over. Even if this client never confirms, it must not be
     // given the same message again the next time it opens the app.
     const ids = forThem.map((message) => message.id);
-    await store.markDelivered(roomCode, socket.clientId, ids);
 
-    // Last resort for clients that never say who they are: after a few
-    // hand-outs the message is dropped rather than offered for ever.
+    // Last resort for clients that never confirm: after a few hand-outs
+    // the message is dropped rather than offered for ever.
     const spent = await store.countHandouts(roomCode, ids);
     if (spent.length > 0) await store.forget(roomCode, spent);
   } catch (error) {
@@ -225,7 +232,15 @@ wss.on('connection', (socket) => {
     if (message.type === 'received') {
       const ids = Array.isArray(message.ids) ? message.ids.map(String) : [];
       if (socket.roomCode && ids.length > 0) {
-        store.forget(socket.roomCode, ids).catch(() => undefined);
+        const room = socket.roomCode;
+        const who = socket.clientId;
+        // Record the confirmation first: that is what makes the message
+        // safe to stop offering. Pruning the waiting list is only tidying.
+        store
+          .confirm(room, ids)
+          .then(() => store.markDelivered(room, who, ids))
+          .then(() => store.forget(room, ids))
+          .catch(() => undefined);
       }
       return;
     }

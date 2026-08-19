@@ -18,8 +18,17 @@ const Module = require('node:module');
 const lists = new Map();
 const delivered = new Map();
 const handouts = new Map();
+const confirmed = new Map();
 const fakeStore = {
   isConfigured: true,
+  async confirm(room, ids) {
+    if (!confirmed.has(room)) confirmed.set(room, new Set());
+    for (const id of ids) confirmed.get(room).add(String(id));
+  },
+  async confirmedIds(room) {
+    return [...(confirmed.get(room) ?? [])];
+  },
+
   async countHandouts(room, ids) {
     const spent = [];
     for (const id of ids) {
@@ -201,35 +210,52 @@ test.after(() => {
   server.close();
 });
 
-test('a client that never confirms is still not given the same message twice', async () => {
+test('a message handed to a connection that dies is offered again', async () => {
   lists.clear();
   delivered.clear();
+  handouts.clear();
+  confirmed.clear();
 
+  // She sends three while he is offline.
   const her = await connect();
   await join(her, 'echo5', 'her-phone');
-  her.send(JSON.stringify({ type: 'morse', id: 'stuck-1', symbols: '- .' }));
-  await waitFor(her, (m) => m.type === 'ack', 'ack');
+  for (const id of ['m-a', 'm-b', 'm-c']) {
+    her.send(JSON.stringify({ type: 'morse', id, symbols: '.-' }));
+  }
+  await quiet();
   her.close();
+
+  // His phone connects, is handed all three, and dies before it can
+  // confirm any of them - a background wake on bad data.
+  const dying = await connect();
+  await join(dying, 'echo5', 'danny-phone');
+  await waitFor(dying, (m) => m.type === 'morse', 'first hand-out');
+  await quiet(250);
+  assert.equal(dying.inbox.filter((m) => m.type === 'morse').length, 3, 'all three handed over');
+  dying.close();
   await quiet();
 
-  // Open the app five times over. Never confirm anything.
-  const seen = [];
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const phone = await connect();
-    await join(phone, 'echo5', 'danny-phone');
-    await quiet(250);
-    seen.push(phone.inbox.filter((m) => m.type === 'morse').length);
-    phone.close();
-  }
+  // He opens the app properly. All three must still be there.
+  const phone = await connect();
+  await join(phone, 'echo5', 'danny-phone');
+  await quiet(300);
+  const arrived = phone.inbox.filter((m) => m.type === 'morse');
+  assert.equal(arrived.length, 3, `only ${arrived.length} of 3 survived a dropped connection`);
 
-  assert.deepEqual(seen, [1, 0, 0, 0, 0], `message arrived on each open: ${seen.join(',')}`);
+  // Now he confirms them, and they are gone for good.
+  phone.send(JSON.stringify({ type: 'received', ids: arrived.map((m) => m.id) }));
+  await quiet();
+  phone.close();
 
-  // It is still waiting for anyone else who has not seen it.
-  const otherPhone = await connect();
-  await join(otherPhone, 'echo5', 'third-phone');
-  const got = await waitFor(otherPhone, (m) => m.type === 'morse', 'still waiting for someone new');
-  assert.equal(got.symbols, '- .');
-  otherPhone.close();
+  const again = await connect();
+  await join(again, 'echo5', 'danny-phone');
+  await quiet(300);
+  assert.equal(
+    again.inbox.filter((m) => m.type === 'morse').length,
+    0,
+    'confirmed messages came back'
+  );
+  again.close();
 });
 
 test('an old client that cannot identify itself is not looped for ever', async () => {
@@ -263,7 +289,7 @@ test('an old client that cannot identify itself is not looped for ever', async (
 test('/health says which version is running', async () => {
   const response = await fetch(`http://127.0.0.1:${process.env.PORT}/health`);
   const body = await response.json();
-  assert.equal(body.version, 'v6', 'health must name the running version');
+  assert.equal(body.version, 'v7', 'health must name the running version');
   assert.equal(body.status, 'ok');
 });
 
