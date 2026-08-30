@@ -73,11 +73,29 @@ function peersOf(socket) {
   return [...peers].filter((peer) => peer !== socket);
 }
 
+/**
+ * Tell everyone in a room how many OTHER PEOPLE are in it.
+ *
+ * People, not sockets. One phone can hold two connections at once - a
+ * reconnect the heartbeat has not reaped yet, or the web version open
+ * beside the app - and counting those separately makes the room look
+ * occupied when you are sitting in it on your own. The same reasoning
+ * already governs who gets sent a message; it belongs here too.
+ *
+ * A socket that never sent a clientId keeps the unique one assigned on
+ * connection, so two anonymous clients still count as two. We cannot
+ * tell them apart, and guessing would be worse than counting twice.
+ */
 function broadcastPeerCount(roomCode) {
   const peers = rooms.get(roomCode);
   if (!peers) return;
   for (const socket of peers) {
-    send(socket, { type: 'peers', count: peers.size - 1 });
+    const others = new Set();
+    for (const peer of peers) {
+      if (peer.clientId === socket.clientId) continue;
+      others.add(peer.clientId);
+    }
+    send(socket, { type: 'peers', count: others.size });
   }
 }
 

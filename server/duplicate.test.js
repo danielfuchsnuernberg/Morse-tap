@@ -106,3 +106,48 @@ test.after(() => {
   wss.close();
   server.close();
 });
+
+
+/** The most recent peer count this socket was told. */
+function lastCount(socket) {
+  for (let i = socket.inbox.length - 1; i >= 0; i -= 1) {
+    if (socket.inbox[i].type === 'peers') return socket.inbox[i].count;
+  }
+  return null;
+}
+
+test('the room count is people, not sockets', async () => {
+  const ROOM = 'COUNT1';
+
+  // My phone, on its own.
+  const phone = await connect();
+  phone.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'my-phone' }));
+  await waitFor(phone, (m) => m.type === 'peers', 'first count');
+  assert.equal(lastCount(phone), 0, 'alone in the room is nobody else');
+
+  // The same phone opens a second connection - a reconnect that has not
+  // been reaped yet, or the web version open beside the app. Still me.
+  const web = await connect();
+  web.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'my-phone' }));
+  await sleep(250);
+  assert.equal(
+    lastCount(phone),
+    0,
+    `my own second connection must not read as another person (was ${lastCount(phone)})`
+  );
+
+  // Now she really does join.
+  const her = await connect();
+  her.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'her-phone' }));
+  await sleep(250);
+  assert.equal(lastCount(phone), 1, `she is one person, not two (was ${lastCount(phone)})`);
+  assert.equal(lastCount(her), 1, `she should see me once, not twice (was ${lastCount(her)})`);
+
+  // My spare connection goes away. Nothing changes: it was never a person.
+  web.close();
+  await sleep(300);
+  assert.equal(lastCount(phone), 1, 'losing my own spare socket must not look like her leaving');
+
+  phone.close();
+  her.close();
+});
