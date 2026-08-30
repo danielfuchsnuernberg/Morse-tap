@@ -1,5 +1,5 @@
 /**
- * Morse Tap relay server.
+ * Morse Chat relay server.
  *
  * Dead simple: clients join a room by code, anything one client sends is
  * forwarded to everyone else in that room. No database, no accounts,
@@ -385,7 +385,7 @@ const heartbeat = setInterval(() => {
 wss.on('close', () => clearInterval(heartbeat));
 
 server.listen(PORT, () => {
-  console.log(`Morse Tap relay listening on port ${PORT}`);
+  console.log(`Morse Chat relay listening on port ${PORT}`);
 });
 
 module.exports = { server, wss, rooms };
