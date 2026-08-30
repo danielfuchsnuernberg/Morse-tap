@@ -167,6 +167,7 @@ async function deliverPending(socket, roomCode) {
         // reconnect, for thirty days.
         id: message.id,
         type: 'morse',
+        replyTo: message.replyTo ?? null,
         symbols: message.symbols,
         sentAt: message.sentAt,
         held: true,
@@ -316,9 +317,17 @@ wss.on('connection', (socket) => {
       // safekeeping is never dropped and turns up again on the next
       // connection - the same message, twice.
       const messageId = message.id ?? `s${Date.now()}`;
+      // Which earlier message this answers, if any. Carried through
+      // untouched: the server never looks at what a message says, and a
+      // reply is no different.
+      const replyTo =
+        typeof message.replyTo === 'string' && message.replyTo.length > 0
+          ? message.replyTo.slice(0, 64)
+          : null;
       const payload = {
         type: 'morse',
         id: messageId,
+        replyTo,
         symbols: String(message.symbols || '').slice(0, 1000),
         sentAt: Date.now(),
       };
@@ -342,6 +351,7 @@ wss.on('connection', (socket) => {
         .hold(socket.roomCode, {
           id: messageId,
           from: socket.clientId,
+          replyTo,
           symbols: payload.symbols,
           sentAt: payload.sentAt,
         })

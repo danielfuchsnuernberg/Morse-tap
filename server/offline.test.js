@@ -242,3 +242,43 @@ test.after(() => {
   wss.close();
   server.close();
 });
+
+
+test('a reply keeps pointing at what it answered, live and after being held', async () => {
+  lists.clear(); delivered.clear(); handouts.clear(); confirmed.clear();
+  const ROOM = 'REPLY1';
+
+  // Live: she is there, so the reply reaches her straight away.
+  const her = await connect();
+  her.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'her-phone' }));
+  await waitFor(her, (m) => m.type === 'joined', 'she joined');
+
+  const him = await connect();
+  him.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'his-phone' }));
+  await waitFor(him, (m) => m.type === 'joined', 'he joined');
+
+  him.send(JSON.stringify({ type: 'morse', id: 'h1', symbols: '.... ..' }));
+  await waitFor(her, (m) => m.type === 'morse' && m.id === 'h1', 'the first message');
+  him.send(JSON.stringify({ type: 'morse', id: 'h2', symbols: '-- .', replyTo: 'h1' }));
+  const live = await waitFor(her, (m) => m.type === 'morse' && m.id === 'h2', 'the reply');
+  assert.equal(live.replyTo, 'h1', 'a live reply must say what it answers');
+
+  const plain = her.inbox.find((m) => m.type === 'morse' && m.id === 'h1');
+  assert.equal(plain.replyTo, null, 'an ordinary message answers nothing');
+
+  // Held: she is gone when he replies, and it must still be a reply
+  // when she opens the app again.
+  her.close();
+  await sleep(150);
+  him.send(JSON.stringify({ type: 'morse', id: 'h3', symbols: '.- .-', replyTo: 'h1' }));
+  await sleep(250);
+
+  const back = await connect();
+  back.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'her-phone' }));
+  const held = await waitFor(back, (m) => m.type === 'morse' && m.id === 'h3', 'the held reply');
+  assert.equal(held.replyTo, 'h1', 'a reply held overnight must still say what it answers');
+  assert.equal(held.held, true, 'and it should arrive marked as held');
+
+  back.close();
+  him.close();
+});
