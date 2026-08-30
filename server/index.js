@@ -98,6 +98,39 @@ function leaveRoom(socket) {
 let clientCounter = 0;
 
 /**
+ * What must still be OFFERED to a device: anything held for the room it
+ * did not send and has not confirmed.
+ *
+ * Deliberately lenient. Handing a message over is not proof it arrived -
+ * a connection can die between the server sending and the phone showing
+ * it - so an unconfirmed message is offered again, and countHandouts is
+ * what eventually stops that. Do not tighten this without reading
+ * "a message handed to a connection that dies is offered again".
+ */
+function stillOwedTo(clientId, waiting, confirmed) {
+  return waiting.filter(
+    (message) => message.from !== clientId && !confirmed.includes(String(message.id))
+  );
+}
+
+/**
+ * What a device has never been SHOWN: the same list, minus anything it
+ * has already been handed at least once.
+ *
+ * This is the badge's question, and it is not the same as the one above.
+ * Re-offering a message is cheap insurance; counting it again on the app
+ * icon is not. Sharing one answer is what left the badge counting every
+ * message the room had seen in thirty days, pinned at the MAX_PENDING
+ * ceiling of 200 while nothing was actually waiting.
+ */
+async function unseenBy(roomCode, clientId, waiting, confirmed) {
+  const handed = await store.alreadyDelivered(roomCode, clientId);
+  return stillOwedTo(clientId, waiting, confirmed).filter(
+    (message) => !handed.includes(String(message.id))
+  );
+}
+
+/**
  * Hand a newly joined client anything that was waiting for this room,
  * skipping whatever it sent itself.
  */
@@ -105,18 +138,8 @@ async function deliverPending(socket, roomCode) {
   if (!store.isConfigured) return;
   try {
     const waiting = await store.pending(roomCode);
-    // Only two things stop a message being offered: the recipient
-    // confirmed it, or it has been handed out too many times. Handing it
-    // over is NOT enough - a connection can die between the server
-    // sending and the phone showing it, and that message must survive.
     const confirmed = await store.confirmedIds(roomCode);
-    const seen = await store.alreadyDelivered(roomCode, socket.clientId);
-    const forThem = waiting.filter(
-      (message) =>
-        message.from !== socket.clientId &&
-        !confirmed.includes(String(message.id)) &&
-        !seen.includes(String(message.id))
-    );
+    const forThem = stillOwedTo(socket.clientId, waiting, confirmed);
     if (forThem.length === 0) return;
 
     for (const message of forThem) {
@@ -132,9 +155,13 @@ async function deliverPending(socket, roomCode) {
       });
     }
 
-    // Handed over. Even if this client never confirms, it must not be
-    // given the same message again the next time it opens the app.
+    // Record what this device has now been shown. It does NOT stop the
+    // message being offered again - that is deliberate, see stillOwedTo -
+    // it is what lets the badge stop counting something twice. Nothing
+    // wrote this list on the delivery path before, so every re-offer was
+    // also counted as new on the app icon.
     const ids = forThem.map((message) => message.id);
+    await store.markDelivered(roomCode, socket.clientId, ids);
 
     // Last resort for clients that never confirm: after a few hand-outs
     // the message is dropped rather than offered for ever.
@@ -156,14 +183,19 @@ async function notifyAbsent(roomCode, senderId, symbols) {
     if (devices.length === 0) return;
 
     const waiting = await store.pending(roomCode);
+    const confirmed = await store.confirmedIds(roomCode);
 
-    // How many are waiting depends on who is being told: their own
-    // messages don't count, everyone else's do.
-    const recipients = devices.map(({ clientId, token }) => ({
-      token,
-      symbols,
-      count: waiting.filter((message) => message.from !== clientId).length || 1,
-    }));
+    // The number on the icon is how much this device has never been
+    // shown - not how much it may be re-offered. The floor of 1 stands
+    // because the message that triggered this is stored without being
+    // awaited, so it may not be in the list yet.
+    const recipients = await Promise.all(
+      devices.map(async ({ clientId, token }) => ({
+        token,
+        symbols,
+        count: (await unseenBy(roomCode, clientId, waiting, confirmed)).length || 1,
+      }))
+    );
 
     const { dead } = await push.notify(recipients);
     for (const token of dead) await store.forgetToken(roomCode, token);

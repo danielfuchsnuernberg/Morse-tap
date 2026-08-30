@@ -132,6 +132,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function reset() {
   lists.clear();
   tokens.clear();
+  delivered.clear();
+  handouts.clear();
+  confirmed.clear();
   sent.length = 0;
   pushShouldFail = false;
   deadTokens = [];
@@ -364,4 +367,68 @@ test('the payload never contains decoded letters', async () => {
   for (const word of ['I LOVE YOU', 'ILOVEYOU', 'LOVE']) {
     assert.ok(!text.includes(word), `the notification must not contain "${word}"`);
   }
+});
+
+
+test('the badge counts only what is still coming, not what was already handed over', async () => {
+  reset();
+  const ROOM = 'BADGE';
+
+  // She registers her phone, then closes the app.
+  const her = await connect();
+  her.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'her-phone', pushToken: 'ExpoPushToken[her]' }));
+  await waitFor(her, (m) => m.type === 'joined', 'she joined');
+  her.close();
+  await sleep(80);
+
+  // He sends five while she is away.
+  const him = await connect();
+  him.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'his-phone', pushToken: 'ExpoPushToken[him]' }));
+  await waitFor(him, (m) => m.type === 'joined', 'he joined');
+  for (let i = 1; i <= 5; i += 1) {
+    him.send(JSON.stringify({ type: 'morse', id: `h${i}`, symbols: '.... ..' }));
+    await sleep(40);
+  }
+  await sleep(150);
+  assert.equal(sent.at(-1)?.count, 5, 'five really are waiting for her');
+
+  // She opens the app and is handed all five.
+  const her2 = await connect();
+  her2.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'her-phone', pushToken: 'ExpoPushToken[her]' }));
+  await sleep(250);
+  assert.equal(
+    her2.inbox.filter((m) => m.type === 'morse').length,
+    5,
+    'she receives the five that were waiting'
+  );
+  // Her confirmation never gets out - the app is killed as it arrives.
+  her2.close();
+  await sleep(120);
+
+  // He sends one more. Only that one is still coming to her.
+  him.send(JSON.stringify({ type: 'morse', id: 'h6', symbols: '-- .' }));
+  await sleep(200);
+  assert.equal(
+    sent.at(-1)?.count,
+    1,
+    `the badge should show the one she has not seen, not every message in the room (was ${sent.at(-1)?.count})`
+  );
+
+  // Delivery itself stays deliberately generous: she never confirmed the
+  // first five, so they are offered again rather than risked on a
+  // connection that may have died. That is the guarantee in
+  // "a message handed to a connection that dies is offered again", and
+  // the badge being honest must not cost us it.
+  const her3 = await connect();
+  her3.send(JSON.stringify({ type: 'join', room: ROOM, clientId: 'her-phone', pushToken: 'ExpoPushToken[her]' }));
+  await sleep(250);
+  const again = her3.inbox.filter((m) => m.type === 'morse').map((m) => m.id);
+  assert.deepEqual(
+    again,
+    ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+    `unconfirmed messages must still be re-offered, got ${JSON.stringify(again)}`
+  );
+
+  her3.close();
+  him.close();
 });
