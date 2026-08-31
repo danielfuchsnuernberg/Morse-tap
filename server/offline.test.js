@@ -282,3 +282,49 @@ test('a reply keeps pointing at what it answered, live and after being held', as
   back.close();
   him.close();
 });
+
+
+/**
+ * The relay keys confirmations, delivery records and hand-out counts on
+ * the id the app supplies, and it has no way to tell two phones apart by
+ * it. So the ids have to be unique across phones, and the app makes them
+ * so by putting the device in them.
+ *
+ * This is what goes wrong when they are not, which is why the app must
+ * never go back to numbering messages from one.
+ */
+test('a reply survives when the two phones cannot pick the same id', async () => {
+  lists.clear(); delivered.clear(); handouts.clear(); confirmed.clear();
+
+  // She writes first, into an empty room.
+  const her = await connect();
+  her.send(JSON.stringify({ type: 'join', room: 'UNIQ', clientId: 'her-phone' }));
+  await waitFor(her, (m) => m.type === 'joined', 'she joined');
+  her.send(JSON.stringify({ type: 'morse', id: 'dHER-1', symbols: '.... .' }));
+  await waitFor(her, (m) => m.type === 'ack', 'her ack');
+  her.close();
+  await sleep(150);
+
+  // He reads it and confirms it, the way the app does the moment it lands.
+  const him = await connect();
+  him.send(JSON.stringify({ type: 'join', room: 'UNIQ', clientId: 'his-phone' }));
+  const hers = await waitFor(him, (m) => m.type === 'morse', 'he got hers');
+  assert.equal(hers.symbols, '.... .');
+  him.send(JSON.stringify({ type: 'received', ids: ['dHER-1'] }));
+  await sleep(200);
+
+  // Then he writes back, numbering it from his own log. Were both phones
+  // counting from one, this would be "m1" for the second time in this
+  // room - already confirmed, and so never delivered to her again.
+  him.send(JSON.stringify({ type: 'morse', id: 'dHIS-1', symbols: '-... -.-- .' }));
+  await waitFor(him, (m) => m.type === 'ack', 'his ack');
+  him.close();
+  await sleep(150);
+
+  // She opens the app again and his reply is there.
+  const herAgain = await connect();
+  herAgain.send(JSON.stringify({ type: 'join', room: 'UNIQ', clientId: 'her-phone' }));
+  const reply = await waitFor(herAgain, (m) => m.type === 'morse', 'his reply reached her');
+  assert.equal(reply.symbols, '-... -.-- .', 'his reply, not an echo of her own');
+  herAgain.close();
+});
