@@ -1,361 +1,74 @@
-# Morse Tap — v016
+# Morse Chat — relay server
 
-Send morse code to another person, in real time, from your iPhone. Tap a key, watch it turn into
-dots and dashes, hit send. Your partner's phone beeps it out.
+The WebSocket relay that carries morse between two phones. **This repo is the server and
+nothing else.**
 
-Built with Expo, so **you do not need a Mac** to run it on a real iPhone.
-
-## What's in here
-
-| Path | What it is |
+| | Where |
 |---|---|
-| `App.tsx` | Tab shell and app state |
-| `src/morse.ts` | All morse logic — encode, decode, tap timing, playback |
-| `src/morse.test.ts` | 109 unit tests for the above |
-| `sim/` | Ten end-to-end simulations of real usage |
-| `src/useRelay.ts` | WebSocket connection with auto-reconnect |
-| `src/useTone.ts` | The beep and the flashing key |
-| `src/components/MorseKey.tsx` | The key, with live dot/dash feedback |
-| `src/components/GuideStrip.tsx` | Type a message, see the morse, tap along |
-| `src/storage.ts` | Saving settings, room and messages on the phone |
-| `src/components/ConnectionBar.tsx` | Header status chip and the room controls |
-| `src/components/EchoReader.tsx` | Decode a received message by ear, letter by letter |
-| `src/components/MessageReader.tsx` | Letter tiles, synced highlight, decode puzzle, hints |
-| `src/screens/` | Key, Chart, Settings |
-| `server/` | The relay server that connects two phones |
-| `assets/tone.wav` | 600 Hz sine, generated to loop seamlessly |
+| **The iPhone app** | `~/Documents/GitHub/morse-chat-app` — remote `danielfuchsnuernberg/morse-chat`. That is the TestFlight lineage and the only place app code lives. |
+| **This repo** | The relay the app talks to: `wss://morse-tap-server.onrender.com` |
 
-## The web version — no install, no Mac
+If you are looking for a screen, a button or anything a person taps, it is not here.
 
-There's a second version of the app that runs in the browser and can be added to an iPhone home
-screen like a normal app. It shares the exact same morse core as the phone app — `src/morse.ts` is
-compiled straight to `docs/lib/morse.js`, so both run the same 182-tested logic.
-
-**Why it exists:** the Expo route needs your Mac awake with a terminal running, and the tunnel
-address changes every restart. The web version needs none of that. It lives on GitHub Pages, so it
-works whenever, from anywhere, for anyone you send the link to.
-
-**Publishing it:**
-
-```
-npm run web:build   # rebuilds docs/ from web/
-git add docs && git commit -m "web" && git push
-```
-
-Then on GitHub: Settings → Pages → Source: `main` branch, `/docs` folder.
-
-Your app is then at `https://YOUR-USERNAME.github.io/YOUR-REPO/`.
-
-**Adding it to a home screen (iOS):** open that URL in **Safari** (not Chrome), tap the Share
-button, then **Add to Home Screen**. It gets its own icon and opens fullscreen with no browser
-chrome.
-
-**What differs from the phone app:** no vibration (iOS Safari doesn't allow it), and the beep is
-generated with Web Audio rather than a sound file — which is actually cleaner. Sound needs one tap
-to start, because iOS blocks audio until you touch the screen.
-
-| Path | What it is |
-|---|---|
-| `web/` | Source of the web version |
-| `docs/` | Built output, served by GitHub Pages |
-| `web/build.mjs` | Compiles `src/morse.ts` to browser JavaScript |
-| `web/publish.mjs` | Rebuilds and copies into `docs/` |
-
-## Run it on your iPhone
-
-> **Expo SDK 54.** Pinned deliberately so it loads in the App Store version of Expo Go. Don't run
-> `npx expo upgrade` — a newer SDK means Expo Go refuses the project with "incompatible version".
-
-**1. Install Node.js** (v20 or newer) from https://nodejs.org
-
-**2. Get the code running**
+## Running it
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/morse-tap.git
-cd morse-tap
+cd server
 npm install
-npx expo start
+npm start          # listens on PORT, default 8080
 ```
 
-**3. Install "Expo Go"** from the App Store on your iPhone, open it, and scan the QR code that
-appears in your terminal. The app loads on your phone. Edit a file, the phone updates instantly.
-
-## Put it on someone else's iPhone, free
-
-Getting an app permanently onto another person's iPhone normally needs an Apple Developer account
-at $99/year. There's a way around it: build it as a web app.
-
-```
-npm run build:web
-```
-
-That writes an installable site into `docs/`. Commit and push it, then on GitHub go to
-**Settings → Pages** and set the source to the **/docs folder on main**. Your app is then live at
-`https://YOUR-USERNAME.github.io/YOUR-REPO/`.
-
-Whoever you send that link to opens it in Safari, taps **Share → Add to Home Screen**, and gets an
-icon on their home screen. It opens fullscreen with no browser chrome, keeps its own settings and
-message history, and works whether or not your Mac is switched on.
-
-It is the same app — same key, same tones, same decoding by ear — running in Safari instead of as a
-native binary. Tones use the Web Audio API, storage uses the browser's, and the WebSocket connects
-to the same relay server.
-
-What you give up: no push notifications, and no vibration on iPhone (Safari doesn't allow it). The
-app switches vibration off by itself there.
-
-If your repo name changes, rebuild with the new path:
-
-```
-BASE_URL=/your-repo-name npm run build:web
-```
-
-## Deploy the server
-
-Two phones can only talk once a relay server is running somewhere.
-
-**Render (free):**
-
-1. Push this repo to GitHub
-2. Go to https://render.com → New → Blueprint → pick your repo
-3. Render reads `render.yaml` and deploys `server/` automatically
-4. Copy the URL it gives you, e.g. `https://morse-tap-server.onrender.com`
-5. In the app's Settings tab, paste it as `wss://morse-tap-server.onrender.com` — note **wss**, not https
-
-Free Render instances sleep after inactivity, so the first connection can take ~30 seconds.
-
-**Test locally instead:**
+Health check, which is also how you tell the service is awake:
 
 ```bash
-cd server && npm install && npm start
+curl -s https://morse-tap-server.onrender.com/health
+# {"status":"ok","version":"v7","storage":"ok"}
 ```
 
-Then set the server URL to `ws://YOUR-COMPUTER-LOCAL-IP:8080` (both phones on the same WiFi).
-
-## What the app remembers
-
-Settings, your room code and your messages are kept on the phone. Reopen the app and it's where you
-left it, already rejoining the room you were in — no typing the code again.
-
-Half-finished decoding survives too. Get three letters into a message, close the app, come back, and
-you carry on from the fourth.
-
-The last 200 messages are kept. Settings has a button to delete them.
-
-**This is on-device only.** Messages are not stored on the server, so anything sent while your phone
-is closed is missed.
-
-## Did it actually send?
-
-Every message you send now shows what really happened to it:
-
-- **Sending…** — handed to the server, waiting for confirmation
-- **Delivered** — the server confirmed your partner received it
-- **Nobody there** — it reached the server, but the room was empty
-- **Not sent · Retry** — the connection was down, so it never left. Tap to try again
-
-Anything that couldn't go out is held and sent automatically the moment the connection returns,
-including after a restart. Nothing is silently dropped, and nothing claims to have been sent when
-it wasn't.
-
-## Config plugins — the trap that only bites a real build
-
-Some Expo packages ship a **config plugin**: native settings the app needs, like permission strings.
-Expo Go already has all of that configured, so a missing plugin entry is completely invisible during
-development and only breaks the release build — where iOS will terminate the app for touching an API
-with no usage string, giving you a black screen and no explanation.
-
-Two of these bit this project. `expo-audio` needs a microphone usage string — iOS terminates an app
-that touches mic APIs without one. And `app.json` had a `splash` config while `expo-splash-screen`
-wasn't installed at all, so the real build got a launch screen with no module to dismiss it: a black
-screen that never goes away.
-
-`sim/plugins.sim.mts` now scans every dependency for an `app.plugin.js` and fails if it isn't
-declared, checks the microphone string exists, and refuses a splash config without its module.
-
-The app is also wrapped in an error boundary, because a release build otherwise renders **nothing**
-when it crashes. Now it shows the message and the stack on screen.
-
-## Staying connected
-
-A WebSocket that dies quietly never tells you. A sleeping phone, a server going idle, a network
-blip — the socket just goes silent while the app carries on showing a green light over nothing.
-
-So both versions now check. After 20 seconds of quiet the app pings the server; if nothing answers
-within 8 seconds the link is treated as dead and rebuilt. Returning to the app re-checks
-immediately, since that's the most likely moment to find a stale connection.
-
-If a sent message gets no confirmation within 8 seconds it settles to **Sent** — handed over, but
-unconfirmed. It is **never resent**. The socket accepted it, so it went out; resending would only
-duplicate it on the other phone. Only messages the socket *refused* are queued, and those are
-flushed when the connection returns.
-
-That distinction matters more than it sounds. Treating "no confirmation" as "lost" made the app
-resend every 8 seconds against a server that never confirms anything — four copies in thirty
-seconds. `sim/nodupes.sim.mts` drives the real relay against a deliberately silent server and counts
-what a peer would receive.
-
-Rebuilding a link is fiddlier than it looks. Each attempt is numbered, and only the newest socket is
-allowed to reconnect when it closes. Without that, retiring a dead socket leaves it opening a second
-connection of its own — and you end up sitting in the room twice, receiving your own messages. See
-`sim/reconnect.sim.mts`, which reproduces exactly that.
-
-One more trap worth knowing about: `self` is a real global in a browser, so `self.onmessage = ...`
-compiles cleanly and quietly attaches the handler to the global object instead of your socket. The
-connection then opens, hears nothing ever, and reports itself disconnected. `sim/globals.sim.mts`
-scans every source file for that, and bans naming a local variable `self` at all.
-
-## How two people connect
-
-The connection status lives as a small dot beside the title. Tap it to open the room controls; tap
-again to fold them away, so they cost screen space only while you're using them.
-
-There are no accounts. Both people type the **same room code** — any 3-12 letters or numbers, like
-`BANANA7` — and press Join. Anyone with that code can join, so pick something not obvious.
-
-## Hearing and decoding
-
-Everything you send and receive plays as a real tone, and the letter currently sounding lights up
-so you can follow along.
-
-- Tap your draft to **hear it before you send it**
-- Sending plays it back to you, highlighted letter by letter
-- Incoming messages play automatically the moment they land
-- Tap **Listen** on any message to replay it; tap again to stop
-
-## Decoding by ear
-
-The default. A message arrives **silent and blank** — no dots, no dashes, no letters, and it does
-not play on its own.
-
-The dots and dashes are visible from the start. What you have to earn is **the letter**.
-
-1. **Tap any tile** — that letter sounds immediately
-2. **Tap the pattern back** on the key
-3. Only now does the letter appear, and the next one still to do sounds itself
-
-**Any letter, any order.** If you already know the first three, go straight to the fourth. Solved
-letters go green and can't be picked again.
-
-Hear it, see it, send it, then read it. Nothing is ever copied off the screen, because the letter
-doesn't exist on screen until you've already produced it.
-
-Tap a wrong symbol and that letter resets so you can hear it again — it costs you a miss, not your
-progress, and never touches the letters you've already got. Finish with no misses and it reads
-**Perfect**.
-
-There is deliberately **no way to skip a letter or reveal the message**. The pattern is on screen
-and the Chart is one tab away, so nothing is ever a dead end — an escape hatch would only defeat the
-point of decoding it.
-
-While decoding, the key belongs to that message; the compose controls step aside and a banner says
-so. Matching is symbol by symbol, so there's no timing to get right while decoding — only dot
-versus dash.
-
-Switch to **By typing** in Settings for the older, quicker style below.
-
-## Decoding by typing
-
-Messages you receive arrive **fully coded**. Nothing is filled in for you — just the dots and
-dashes and the sound. You type what you think it says; correct letters lock in green, wrong ones
-show red so you know where you slipped.
-
-When you're stuck, four things help, all opt-in:
-
-- **Tap a tile** to hear that one letter on its own — no replaying the whole message
-- **Hold a tile** to reveal that specific letter
-- **Slow** replays the message at half speed
-- **Give me a letter** reveals the next letter you haven't got
-
-Anything that hands you a letter counts as a hint, and the count is shown on the message. Finish
-without any and it reads **Solved · no hints**. There's no difficulty setting — you set the
-difficulty by how much help you take.
-
-**Show all** gives up and reveals everything.
-
-Your own sent messages are always shown in plain text — the puzzle is only for incoming.
-
-## How to actually send morse
-
-You don't need to count or guess. The key tells you what it's doing while you hold it:
-
-- **Hold it.** A dot appears, and a bar creeps across the key.
-- **When the bar fills, the dot becomes a DASH** and the key turns orange. Let go at whichever one
-  you wanted.
-- **After you release**, a thin line under the key drains away. Tap again before it empties and
-  you're still in the same letter. Let it drain and the next tap starts a new letter.
-- **For a new word, press Space.** Pauses never start a word — only that button does. Take as long
-  as you like between letters without splitting your message.
-
-Speeds are set with a stepper rather than a handful of presets: Beginner runs 3–20 wpm in fine
-steps at the slow end, Farnsworth character speed 8–25, and overall pace right down to 2 wpm. Slower
-means longer gaps, which is the cure for letters running together.
-
-At the default 5 words per minute a dash needs about half a second. Slower than feels natural, which
-is why the key shows you rather than making you count.
-
-The decoded English appears under your dots and dashes as you tap, so you always know whether you
-got it right before you send. The Chart tab lists every letter and number — tap any row to hear it.
-
-## Two modes
-
-Switch in Settings.
-
-**Beginner** — everything at one slow speed, and a **Space** button separates words. Pauses never
-split a word, so you can take as long as you like between letters. This is not real morse; it's
-training wheels, and there's no shame in it.
-
-**Farnsworth** — how morse actually works, and how it has been taught for decades. Each letter is
-sent at full speed (18 wpm by default) so it sounds like real morse, but the silences between
-letters are stretched to give you thinking time. There is no Space button: a long enough pause
-starts a new word, exactly as on a real telegraph key.
-
-Why letters at full speed? Learning them slowly teaches you to *count* dots, and that becomes a wall
-around 10 wpm that's genuinely hard to break through. Farnsworth avoids it by making you learn each
-letter's sound shape from the first day.
-
-The key shows a second countdown bar in Farnsworth mode, so you can see the word gap approaching
-rather than guessing at it.
-
-## The guide
-
-Above the key there's a **Guide** panel. Type what you want to say — `I LOVE YOU` — and it lays out
-the morse for every letter, in order, right where you can see it while tapping.
-
-**It never sends anything.** The only thing that gets sent is what you actually tapped on the key.
-The guide is a crib sheet, not a shortcut.
-
-As you tap, each letter turns green when you get it. The panel tells you which letter is next and
-what it looks like, so you never leave the Key tab. Tap any guide letter to hear it. Go wrong and it
-says so immediately — hit Undo and carry on.
-
-Collapse it when you don't need it.
-
-## Fixing mistakes
-
-- **Tap Undo** — removes one dot or dash
-- **Hold Undo** — removes the whole last letter, however many symbols it had
-- **Space** — ends the current word. Tapping it twice does nothing extra, and Undo removes it.
-
-A wrong letter three symbols deep shouldn't take three taps to clear. Hold Undo once and the guide
-puts you straight back on track.
+The free Render tier sleeps after inactivity, so the first call can take ~30 seconds.
 
 ## Tests
 
+52 tests across six files, all expected to pass:
+
 ```bash
-npm test            # 182 logic tests
-npm run typecheck  # TypeScript, strict mode
-npm run test:server # 23 live server tests (boots the real server)
+cd server
+for f in test.js duplicate.test.js echo.test.js delivery.test.js offline.test.js push.test.js; do
+  node --test --test-force-exit "$f"
+done
 ```
 
-## Not in v016
+## Deploying
 
-- Messages arriving while your phone is closed (nothing is stored on the server)
-- End-to-end encryption (the relay sees messages in plain text)
-- Push notifications when the app is closed
-- App Store build — that needs an Apple Developer account ($99/yr) and `eas build`
-- Vibration on the web version (Safari on iOS doesn't support it)
+Render serves this from `render.yaml` (`rootDir: server`).
 
-## Licence
+**Pushing does not deploy it.** `render.yaml` says `autoDeploy: true`, but the service was not
+created from that blueprint, so the dashboard's own setting governs — and it does not fire. Push,
+then open the Render dashboard and press **Deploy**, then check it actually took. `/health` cannot
+tell you, because it reports `version: v7` on every build. The honest test is a round trip of
+something the new build changed.
 
-MIT
+## The rules not to break
+
+`stillOwedTo()` in `server/index.js` deliberately re-offers a held message the recipient has not
+confirmed, because a connection can die between the server sending and the phone showing it.
+`countHandouts` (MAX_HANDOUTS = 4) is the backstop, not the filter. **Never filter delivery on
+`alreadyDelivered`** — that list records what has been *shown*, and exists only for `unseenBy()`,
+which feeds the app-icon badge. Two different questions. Locked in by `echo.test.js` → *"a message
+handed to a connection that dies is offered again"*.
+
+Message ids must be unique across phones, and the app puts the device into them.
+`offline.test.js` → *"a reply survives when the two phones cannot pick the same id"* holds that,
+and shows what breaks when it is not true: a second `m1` in a room counts as already confirmed, so
+it is never delivered.
+
+## What used to be here
+
+Until November 2026 this repo also held a stale copy of an old React Native app, and a web version
+of Morse Chat published to GitHub Pages from `docs/`. Both are gone.
+
+The app code lives in `morse-chat-app` and always did; the copy here was a fork left behind. The
+web version existed only because there was no App Store build yet — there is one now, so it was
+retired rather than kept running in parallel.
+
+Both are still in git history if they are ever wanted back.
